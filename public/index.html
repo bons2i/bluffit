@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nobody is Perfect Clone</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+    <div class="main-container">
+        <header id="game-header" class="hidden">
+            <div class="header-content">
+                <div class="logo-area">
+                    <h1 class="game-logo-clean">
+                        <span class="glow-blue">BLUFF</span> <span class="glow-pink">IT</span>
+                    </h1>
+                </div>
+                
+                <div class="room-info-simple">
+                    <span class="label-minimal">RAUM:</span>
+                    <span id="room-code-display" class="code-minimal">---</span>
+                </div>
+            </div>
+        </header>
+
+        <section id="landing-section" class="phase-container">
+            <h1 class="game-logo-clean" style="font-size: 4rem; text-align: center; margin-bottom: 50px;">
+        <span class="glow-blue">BLUFF</span> <span class="glow-pink">IT</span>
+    </h1>
+            <div class="menu-buttons">
+                <button id="btn-create-room" class="btn neon-btn-pink">Raum erstellen</button>
+                <button id="btn-show-join" class="btn neon-btn-blue">Raum beitreten</button>
+            </div>
+
+            <div id="create-dialog" class="hidden dialog-box">
+                <input type="text" id="create-name-input" placeholder="Dein Name" class="neon-input">
+                <input type="text" id="create-code-input" placeholder="Wunsch-Code (leer lassen = Zufall)" class="neon-input">
+                <input type="number" id="create-rounds-input" placeholder="Standard Rundenanzahl (0 = endlos)" class="neon-input" min="0">
+                <button id="btn-create-confirm" class="btn neon-btn-pink">Jetzt erstellen</button>
+                <button id="btn-create-cancel" class="btn neon-btn-plain">Abbrechen</button>
+            </div>
+
+            <div id="join-dialog" class="hidden dialog-box">
+                <input type="text" id="join-name-input" placeholder="Dein Name" class="neon-input">
+                <input type="text" id="join-code-input" placeholder="Raum Code (z.B. X7Z)" class="neon-input">
+                <button id="btn-join-confirm" class="btn neon-btn-green">Beitreten</button>
+                <button id="btn-join-cancel" class="btn neon-btn-plain">Abbrechen</button>
+            </div>
+        </section>
+
+
+        <section id="game-room-section" class="hidden game-layout">
+            <aside class="player-sidebar neon-border-blue">
+                <div class="sidebar-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0;">Spieler</h3>
+                    <span id="round-counter" style="font-size: 1rem;"></span>
+                </div>
+                <ul 
+                    id="player-list">
+                </ul>
+                    
+            </aside>
+            
+
+            <main class="game-content neon-border-pink">
+        
+                <div id="phase-lobby" class="phase-container">
+                    <h2>Warte auf Spieler...</h2>
+                    <p>Sobald alle da sind, kann der Host das Spiel starten.</p>
+                    <button id="btn-start-game" class="btn neon-btn-green hidden">Spiel starten (Neue Frage)</button>
+                </div>
+
+                <div id="phase-writing" class="phase-container hidden">
+                    <h2 class="question-box" id="question-text">Frage wird geladen...</h2>
+                    <div class="answer-input-area">
+                        <textarea id="my-answer-input" placeholder="Erfinde deine glaubwürdige Antwort..." class="neon-input"></textarea>
+                        <button id="btn-submit-answer" class="btn neon-btn-pink">Antwort abschicken</button>
+                    </div>
+                    <p id="waiting-message" class="hidden neon-text-green">Antwort abgeschickt! Warte auf die anderen...</p>
+                </div>
+
+                <div id="phase-voting" class="phase-container hidden">
+                    <h2 class="question-box">Welche Antwort ist richtig?</h2>
+                    <div id="voting-options" class="options-grid"></div>
+                </div>
+
+                <div id="phase-reveal" class="phase-container hidden">
+                    <h2 class="question-box">Auflösung</h2>
+                    
+                    <div id="voting-distribution" class="options-grid"></div>
+
+                    <div id="round-summary" class="hidden" style="margin-top: 30px; border-top: 1px solid #444; padding-top: 15px;">
+                    <h3 class="question-box" style="margin-bottom: 10px;">Punkte dieser Runde:</h3>
+                    <div id="round-points-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px;">
+                        </div>                   
+                </div>
+                </div>
+
+                
+
+                <div id="host-controls" class="hidden" style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">
+                    <button id="btn-start-game" class="btn neon-btn-green hidden">Spiel starten</button>
+                    
+                    <button id="btn-show-answers" class="btn neon-btn-blue hidden">Antworten anzeigen</button>
+                    <button id="btn-show-results" class="btn neon-btn-green hidden">Voting beenden (Verteilung zeigen)</button>
+                    
+                    <button id="btn-reveal-answer" class="btn neon-btn-green hidden">Richtige Antwort markieren</button>
+                    <button id="btn-reveal-authors" class="btn neon-btn-blue hidden">Autoren aufdecken</button>
+                    <button id="btn-start-next-round" class="btn neon-btn-pink hidden">Nächste Runde</button>
+                </div>
+
+                <div id="host-controls" class="hidden" style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">
+                    <button id="btn-show-answers" class="btn neon-btn-blue hidden">Antworten zur Wahl stellen</button>
+                    <button id="btn-show-results" class="btn neon-btn-green hidden">Voting beenden</button>
+                    <button id="btn-reveal-answer" class="btn neon-btn-green hidden">Richtige Antwort aufdecken!</button>
+                    <button id="btn-start-next-round" class="btn neon-btn-pink hidden">Nächste Runde</button>
+                </div>
+
+                <div id="phase-end-results" class="phase-container hidden">
+                        <h1 class="neon-pink" style="font-size: 3rem; text-align: center;">SIEGEREHRUNG</h1>
+                        <div id="podium-list"></div>
+                        <div style="text-align: center; margin-top: 30px;">
+                            <button id="btn-rematch" class="btn neon-btn-blue hidden">🔄 Nochmal spielen (selber Raum)</button>
+                            <button onclick="location.reload()" class="btn neon-btn-plain" style="font-size: 0.8rem; margin-top: 10px;">Raum verlassen</button>
+                        </div>
+                    </div>
+            </main>
+        </section>
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
