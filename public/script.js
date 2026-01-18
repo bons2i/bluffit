@@ -7,6 +7,7 @@ let myLastAnswer = "";
 let currentRevealData = null;
 let currentRound = 0;
 let maxRounds = 0;
+let showTicks = true;
 
 // --- DOM Elemente referenzieren ---
 const landingSection = document.getElementById('landing-section');
@@ -87,22 +88,14 @@ function showGamePhase(phaseId) {
 
 function updatePlayerListUI(players) {
     playerList.innerHTML = '';
-    
-    // Prüfen, in welcher Phase wir sind (Haken nur zeigen, wenn wir nicht in der Auflösung sind)
-    const isRevealPhase = !phaseReveal.classList.contains('hidden');
-    const isLobby = !phaseLobby.classList.contains('hidden');
-
     players.forEach(p => {
         const li = document.createElement('li');
         li.setAttribute('data-id', p.id);
         const hostIndicator = (p.id === players[0].id) ? '⭐ ' : ''; 
         
-        // HAKEN-LOGIK: Nur zeigen, wenn NICHT Auflösung und NICHT Lobby
-        let tick = '';
-        if (!isRevealPhase && !isLobby && p.currentAnswer) {
-            tick = '✔';
-        }
-
+        // HIER DIE LOGIK: Nur wenn showTicks wahr ist UND der Spieler abgegeben hat
+        const tick = (showTicks && p.currentAnswer) ? '✔' : '';
+        
         li.innerHTML = `${hostIndicator}${p.name} <span>Points: ${p.points} <span class="tick-mark">${tick}</span></span>`;
         playerList.appendChild(li);
     });
@@ -258,6 +251,7 @@ socket.on('newQuestion', (data) => {
     questionText.innerText = data.question;
     currentRound = data.currentRound;
     maxRounds = data.maxRounds;
+    showTicks = true;
 
     // UI Reset
     myAnswerInput.value = '';
@@ -265,16 +259,18 @@ socket.on('newQuestion', (data) => {
     myAnswerInput.classList.remove('hidden'); 
     btnSubmitAnswer.classList.remove('hidden'); 
     waitingMessage.classList.add('hidden');
-    resetCheckmarks();
+    
 
     // Rundenzähler Text
     const roundText = maxRounds > 0 ? `Runde: ${currentRound} / ${maxRounds}` : `Runde: ${currentRound}`;
     roundCounter.innerText = roundText;
     
+    updatePlayerListUI(data.players);
     showGamePhase('phase-writing');
 });
 
 socket.on('showVotingOptions', (answers) => {
+    showTicks = true;
     showGamePhase('phase-voting');
     
     // WICHTIG: Die Variable muss hier oben definiert werden
@@ -282,7 +278,6 @@ socket.on('showVotingOptions', (answers) => {
     votingOptionsContainer.innerHTML = ''; 
     
     let selectedAnswer = null;
-    resetCheckmarks();
 
     // 1. Antwort-Buttons erstellen
     answers.forEach(answer => {
@@ -364,7 +359,7 @@ socket.on('resultsRevealed', (data) => {
     questionText.innerText = data.question;
     
     showGamePhase('phase-reveal');
-    resetCheckmarks();
+    showTicks = false;
     
     // Alte Buttons resetten falls nötig
     if(amIHost) {
@@ -399,6 +394,7 @@ socket.on('resultsRevealed', (data) => {
         `;
         votingDistribution.appendChild(div);
     });
+    updatePlayerListUI(data.players);
 });
 
 // SCHRITT B: Richtige Antwort grün machen & Punkte updaten
@@ -490,7 +486,7 @@ socket.on('showFinalResult', () => {
     
     // 3. PUNKTE UPDATEN 
     updatePlayerListUI(currentRevealData.players);
-    resetCheckmarks();
+    
 
     // 4. Die Zusammenfassung ("Punktestand aktuell") füllen
     finalPointsList.innerHTML = '';
@@ -588,9 +584,9 @@ socket.on('gameEnded', (players) => {
 
 socket.on('rematchStarted', (players) => {
     // Zurück in die Lobby
+    showTicks = false;
     updatePlayerListUI(players);
     showGamePhase('phase-lobby');
-    resetCheckmarks();
     
     // Header wieder einblenden (falls er versteckt wurde)
     gameHeader.classList.remove('hidden');
@@ -618,4 +614,5 @@ socket.on('youAreHost', () => {
 
 
 socket.on('error', (msg) => alert(msg));
+
 
