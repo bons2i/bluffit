@@ -8,6 +8,7 @@ let currentRevealData = null;
 let currentRound = 0;
 let maxRounds = 0;
 let showTicks = false;
+let currentPhase = "LOBBY";
 
 // --- DOM Elemente referenzieren ---
 const landingSection = document.getElementById('landing-section');
@@ -87,12 +88,8 @@ function showGamePhase(phaseId) {
 }
 
 function updatePlayerListUI(players) {
-    if (!players || !Array.isArray(players)) return; // Verhindert Absturz bei leeren Daten
-    
+   if (!players) return;
     playerList.innerHTML = '';
-
-    const isWritingPhase = !phaseWriting.classList.contains('hidden');
-    const isVotingPhase = !phaseVoting.classList.contains('hidden');
     
     players.forEach(p => {
         const li = document.createElement('li');
@@ -100,14 +97,18 @@ function updatePlayerListUI(players) {
         const hostIndicator = (p.id === players[0].id) ? '⭐ ' : ''; 
         
         let tick = '';
-        if (isWritingPhase && p.currentAnswer) {
-            // In der Schreibphase: Zeige Haken, wenn Antwort da ist
-            tick = '✔';
-        } else if (isVotingPhase && p.votedFor) {
-            // In der Votingphase: Zeige Haken, wenn p.votedFor existiert
-            // (Hinweis: Dein Server muss p.votedFor in der Player-Liste mitschicken!)
-            tick = '✔';
+        
+        // LOGIK-FILTER:
+        if (currentPhase === "WRITING") {
+            // Nur Haken zeigen, wenn in der Schreib-Phase eine Antwort da ist
+            if (p.currentAnswer) tick = '✔';
+        } 
+        else if (currentPhase === "VOTING") {
+            // Nur Haken zeigen, wenn in der Voting-Phase ein Vote da ist
+            // Achtung: Der Server muss das Feld 'votedFor' mitschicken!
+            if (p.votedFor) tick = '✔';
         }
+        // In REVEAL oder LOBBY bleibt tick leer ("")
 
         li.innerHTML = `${hostIndicator}${p.name} <span>Points: ${p.points || 0} <span class="tick-mark">${tick}</span></span>`;
         playerList.appendChild(li);
@@ -253,6 +254,8 @@ socket.on('joinedSuccess', (roomId) => {
 socket.on('updatePlayerList', (players) => updatePlayerListUI(players));
 
 socket.on('newQuestion', (data) => {
+    currentPhase = "WRITING";
+    showGamePhase('phase-writing');
     showTicks = true;
     questionText.innerText = data.question;
     currentRound = data.currentRound;
@@ -272,11 +275,14 @@ socket.on('newQuestion', (data) => {
     roundCounter.innerText = roundText;
     
     updatePlayerListUI(data.players);
-    showGamePhase('phase-writing');
+    
 });
 
 socket.on('showVotingOptions', (answers) => {
+    currentPhase = "VOTING";
     showGamePhase('phase-voting');
+    document.querySelectorAll('.tick-mark').forEach(el => el.innerText = '');
+    // HIER WICHTIG: Sofort Liste neu zeichnen, damit die alten Haken verschwinden!
     showTicks = false;
     
     // WICHTIG: Die Variable muss hier oben definiert werden
@@ -319,11 +325,13 @@ socket.on('showVotingOptions', (answers) => {
     // HIER IST DER FIX: Die Logik greift jetzt sicher auf den Container zu
     confirmBtn.onclick = () => {
         if (selectedAnswer) {
-            // Nachricht an Server
             socket.emit('submitVote', { roomId: myRoomId, answerText: selectedAnswer });
             
-            // UI Update
-            votingOptionsContainer.innerHTML = ''; // Jetzt ist die Variable bekannt!
+            // MANUELLER FIX: Deinen eigenen Haken sofort anzeigen
+            const myLi = document.querySelector(`li[data-id="${socket.id}"] .tick-mark`);
+            if(myLi) myLi.innerText = '✔';
+    
+            votingOptionsContainer.innerHTML = '';
 
             const lockedBtn = document.createElement('button');
             lockedBtn.className = 'btn neon-btn-green';
@@ -358,6 +366,7 @@ socket.on('playerSubmitted', (playerId) => {
 
 // SCHRITT A: Liste bauen (Wer hat was gewählt?)
 socket.on('resultsRevealed', (data) => {
+    currentPhase = "REVEAL";
     showGamePhase('phase-reveal');
     document.querySelectorAll('.tick-mark').forEach(el => el.innerText = '');
     showTicks = false;
@@ -622,6 +631,7 @@ socket.on('youAreHost', () => {
 
 
 socket.on('error', (msg) => alert(msg));
+
 
 
 
