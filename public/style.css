@@ -172,7 +172,7 @@ textarea.neon-input {
     background: rgba(10, 10, 10, 0.9);
     border-bottom: 2px solid var(--neon-blue);
     padding: 10px 20px;
-    position: sticky;
+    position: relative;
     top: 0;
     z-index: 100;
 }
@@ -276,4 +276,5 @@ textarea.neon-input {
     0% { opacity: 0.4; }
     50% { opacity: 1; }
     100% { opacity: 0.4; }
+
 }
