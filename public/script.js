@@ -110,7 +110,7 @@ function updatePlayerListUI(players) {
         }
         // In REVEAL oder LOBBY bleibt tick leer ("")
 
-        li.innerHTML = `${hostIndicator}${p.name} <span>Points: ${p.points || 0} <span class="tick-mark">${tick}</span></span>`;
+        li.innerHTML = `${hostIndicator}${p.name} <span>Punkte: ${p.points || 0} <span class="tick-mark">${tick}</span></span>`;
         playerList.appendChild(li);
     });
 
@@ -631,6 +631,7 @@ socket.on('youAreHost', () => {
 
 
 socket.on('error', (msg) => alert(msg));
+
 
 
 
