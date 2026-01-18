@@ -116,6 +116,12 @@ function updatePlayerListUI(players) {
     }
 }
 
+function resetCheckmarks() {
+    // Sucht alle Elemente mit der Klasse 'checkmark' und versteckt sie
+    document.querySelectorAll('.checkmark').forEach(el => {
+        el.style.display = 'none'; 
+    });
+}
 
 
 // --- EVENT LISTENERS ---
@@ -250,6 +256,7 @@ socket.on('newQuestion', (data) => {
     myAnswerInput.classList.remove('hidden'); 
     btnSubmitAnswer.classList.remove('hidden'); 
     waitingMessage.classList.add('hidden');
+    resetCheckmarks();
 
     // Rundenzähler Text
     const roundText = maxRounds > 0 ? `Runde: ${currentRound} / ${maxRounds}` : `Runde: ${currentRound}`;
@@ -266,6 +273,7 @@ socket.on('showVotingOptions', (answers) => {
     votingOptionsContainer.innerHTML = ''; 
     
     let selectedAnswer = null;
+    resetCheckmarks();
 
     // 1. Antwort-Buttons erstellen
     answers.forEach(answer => {
@@ -343,7 +351,7 @@ socket.on('resultsRevealed', (data) => {
     roundSummary.classList.add('hidden');
     currentRevealData = data; 
     showGamePhase('phase-reveal');
-    
+    resetCheckmarks();
     // Alte Buttons resetten falls nötig
     if(amIHost) {
         btnRevealAnswer.classList.remove('hidden');
@@ -468,6 +476,7 @@ socket.on('showFinalResult', () => {
     
     // 3. PUNKTE UPDATEN 
     updatePlayerListUI(currentRevealData.players);
+    resetCheckmarks();
 
     // 4. Die Zusammenfassung ("Punktestand aktuell") füllen
     finalPointsList.innerHTML = '';
@@ -567,6 +576,7 @@ socket.on('rematchStarted', (players) => {
     // Zurück in die Lobby
     updatePlayerListUI(players);
     showGamePhase('phase-lobby');
+    resetCheckmarks();
     
     // Header wieder einblenden (falls er versteckt wurde)
     gameHeader.classList.remove('hidden');
@@ -591,5 +601,6 @@ socket.on('youAreHost', () => {
     }
     alert("Der Host hat das Spiel verlassen. Du bist jetzt der neue Host!");
 });
+
 
 socket.on('error', (msg) => alert(msg));
