@@ -7,7 +7,7 @@ let myLastAnswer = "";
 let currentRevealData = null;
 let currentRound = 0;
 let maxRounds = 0;
-let showTicks = true;
+let showTicks = false;
 
 // --- DOM Elemente referenzieren ---
 const landingSection = document.getElementById('landing-section');
@@ -614,5 +614,6 @@ socket.on('youAreHost', () => {
 
 
 socket.on('error', (msg) => alert(msg));
+
 
 
