@@ -87,15 +87,24 @@ function showGamePhase(phaseId) {
 
 function updatePlayerListUI(players) {
     playerList.innerHTML = '';
+    
+    // Prüfen, in welcher Phase wir sind (Haken nur zeigen, wenn wir nicht in der Auflösung sind)
+    const isRevealPhase = !phaseReveal.classList.contains('hidden');
+    const isLobby = !phaseLobby.classList.contains('hidden');
+
     players.forEach(p => {
         const li = document.createElement('li');
         li.setAttribute('data-id', p.id);
         const hostIndicator = (p.id === players[0].id) ? '⭐ ' : ''; 
-        const tick = p.currentAnswer ? '✔' : '';
+        
+        // HAKEN-LOGIK: Nur zeigen, wenn NICHT Auflösung und NICHT Lobby
+        let tick = '';
+        if (!isRevealPhase && !isLobby && p.currentAnswer) {
+            tick = '✔';
+        }
+
         li.innerHTML = `${hostIndicator}${p.name} <span>Points: ${p.points} <span class="tick-mark">${tick}</span></span>`;
         playerList.appendChild(li);
-
-        
     });
 
     // Wenn amIHost, fügen wir am Ende der Liste den Beenden-Button hinzu
@@ -118,7 +127,7 @@ function updatePlayerListUI(players) {
 
 function resetCheckmarks() {
     // Sucht alle Elemente mit der Klasse 'checkmark' und versteckt sie
-    document.querySelectorAll('.checkmark').forEach(el => {
+    document.querySelectorAll('.tick-mark').forEach(el => {
         el.style.display = 'none'; 
     });
 }
@@ -350,8 +359,13 @@ socket.on('playerSubmitted', (playerId) => {
 socket.on('resultsRevealed', (data) => {
     roundSummary.classList.add('hidden');
     currentRevealData = data; 
+
+    const revealQuestionHeader = document.getElementById('question-text-reveal');
+    questionText.innerText = data.question;
+    
     showGamePhase('phase-reveal');
     resetCheckmarks();
+    
     // Alte Buttons resetten falls nötig
     if(amIHost) {
         btnRevealAnswer.classList.remove('hidden');
@@ -604,3 +618,4 @@ socket.on('youAreHost', () => {
 
 
 socket.on('error', (msg) => alert(msg));
+
