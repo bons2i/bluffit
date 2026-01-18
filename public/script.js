@@ -87,20 +87,28 @@ function showGamePhase(phaseId) {
 }
 
 function updatePlayerListUI(players) {
+    if (!players || !Array.isArray(players)) return; // Verhindert Absturz bei leeren Daten
+    
     playerList.innerHTML = '';
     players.forEach(p => {
         const li = document.createElement('li');
         li.setAttribute('data-id', p.id);
-        const hostIndicator = (p.id === players[0].id) ? '⭐ ' : ''; 
         
-        // HIER DIE LOGIK: Nur wenn showTicks wahr ist UND der Spieler abgegeben hat
+        // Host-Sternchen
+        const isHost = players[0] && p.id === players[0].id;
+        const hostIndicator = isHost ? '⭐ ' : ''; 
+        
+        // HAKEN-LOGIK: Nur wenn showTicks aktiv ist
         const tick = (showTicks && p.currentAnswer) ? '✔' : '';
         
-        li.innerHTML = `${hostIndicator}${p.name} <span>Points: ${p.points} <span class="tick-mark">${tick}</span></span>`;
+        // PUNKTE-SICHERHEIT: Falls p.points undefined ist, zeige 0
+        const displayPoints = (p.points !== undefined) ? p.points : 0;
+
+        li.innerHTML = `${hostIndicator}${p.name} <span>Points: ${displayPoints} <span class="tick-mark">${tick}</span></span>`;
         playerList.appendChild(li);
     });
 
-    // Wenn amIHost, fügen wir am Ende der Liste den Beenden-Button hinzu
+    // Host-Beenden-Button
     if (amIHost) {
         const endBtn = document.createElement('button');
         endBtn.innerText = "Spiel beenden";
@@ -108,9 +116,8 @@ function updatePlayerListUI(players) {
         endBtn.style.width = "100%";
         endBtn.style.marginTop = "10px";
         endBtn.style.fontSize = "0.7rem";
-        endBtn.style.border = "1px solid rgba(255, 255, 255, 0.2)"; // Dezenter Rahmen
         endBtn.style.background = "transparent";
-        endBtn.style.color = "rgba(255, 255, 255, 0.5)"; // Etwas blasser im Normalzustand
+        endBtn.style.color = "rgba(255, 255, 255, 0.5)";
         endBtn.onclick = () => {
             if(confirm("Spiel wirklich für alle beenden?")) socket.emit('forceEndGame', myRoomId);
         };
@@ -118,12 +125,6 @@ function updatePlayerListUI(players) {
     }
 }
 
-function resetCheckmarks() {
-    // Sucht alle Elemente mit der Klasse 'checkmark' und versteckt sie
-    document.querySelectorAll('.tick-mark').forEach(el => {
-        el.style.display = 'none'; 
-    });
-}
 
 
 // --- EVENT LISTENERS ---
@@ -247,11 +248,11 @@ socket.on('joinedSuccess', (roomId) => {
 socket.on('updatePlayerList', (players) => updatePlayerListUI(players));
 
 socket.on('newQuestion', (data) => {
-    // Daten vom Server übernehmen
+    showTicks = true;
     questionText.innerText = data.question;
     currentRound = data.currentRound;
     maxRounds = data.maxRounds;
-    showTicks = true;
+    
 
     // UI Reset
     myAnswerInput.value = '';
@@ -352,6 +353,7 @@ socket.on('playerSubmitted', (playerId) => {
 
 // SCHRITT A: Liste bauen (Wer hat was gewählt?)
 socket.on('resultsRevealed', (data) => {
+    showTicks = false;
     roundSummary.classList.add('hidden');
     currentRevealData = data; 
 
@@ -359,7 +361,7 @@ socket.on('resultsRevealed', (data) => {
     questionText.innerText = data.question;
     
     showGamePhase('phase-reveal');
-    showTicks = false;
+    
     
     // Alte Buttons resetten falls nötig
     if(amIHost) {
@@ -614,6 +616,7 @@ socket.on('youAreHost', () => {
 
 
 socket.on('error', (msg) => alert(msg));
+
 
 
 
