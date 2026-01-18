@@ -10,6 +10,9 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
 app.use(express.static('public'));
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/public/index.html');
+});
 
 let rooms = {}; // Hier speichern wir alle aktiven Räume
 let questions = JSON.parse(fs.readFileSync('questions.json', 'utf8'));
@@ -328,4 +331,5 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, () => {
     console.log(`Server läuft auf Port ${PORT}`);
+
 });
