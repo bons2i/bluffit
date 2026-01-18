@@ -90,21 +90,26 @@ function updatePlayerListUI(players) {
     if (!players || !Array.isArray(players)) return; // Verhindert Absturz bei leeren Daten
     
     playerList.innerHTML = '';
+
+    const isWritingPhase = !phaseWriting.classList.contains('hidden');
+    const isVotingPhase = !phaseVoting.classList.contains('hidden');
+    
     players.forEach(p => {
         const li = document.createElement('li');
         li.setAttribute('data-id', p.id);
+        const hostIndicator = (p.id === players[0].id) ? '⭐ ' : ''; 
         
-        // Host-Sternchen
-        const isHost = players[0] && p.id === players[0].id;
-        const hostIndicator = isHost ? '⭐ ' : ''; 
-        
-        // HAKEN-LOGIK: Nur wenn showTicks aktiv ist
-        const tick = (showTicks && p.currentAnswer) ? '✔' : '';
-        
-        // PUNKTE-SICHERHEIT: Falls p.points undefined ist, zeige 0
-        const displayPoints = (p.points !== undefined) ? p.points : 0;
+        let tick = '';
+        if (isWritingPhase && p.currentAnswer) {
+            // In der Schreibphase: Zeige Haken, wenn Antwort da ist
+            tick = '✔';
+        } else if (isVotingPhase && p.votedFor) {
+            // In der Votingphase: Zeige Haken, wenn p.votedFor existiert
+            // (Hinweis: Dein Server muss p.votedFor in der Player-Liste mitschicken!)
+            tick = '✔';
+        }
 
-        li.innerHTML = `${hostIndicator}${p.name} <span>Points: ${displayPoints} <span class="tick-mark">${tick}</span></span>`;
+        li.innerHTML = `${hostIndicator}${p.name} <span>Points: ${p.points || 0} <span class="tick-mark">${tick}</span></span>`;
         playerList.appendChild(li);
     });
 
@@ -271,8 +276,8 @@ socket.on('newQuestion', (data) => {
 });
 
 socket.on('showVotingOptions', (answers) => {
-    showTicks = true;
     showGamePhase('phase-voting');
+    showTicks = false;
     
     // WICHTIG: Die Variable muss hier oben definiert werden
     const votingOptionsContainer = document.getElementById('voting-options');
@@ -353,6 +358,8 @@ socket.on('playerSubmitted', (playerId) => {
 
 // SCHRITT A: Liste bauen (Wer hat was gewählt?)
 socket.on('resultsRevealed', (data) => {
+    showGamePhase('phase-reveal');
+    document.querySelectorAll('.tick-mark').forEach(el => el.innerText = '');
     showTicks = false;
     roundSummary.classList.add('hidden');
     currentRevealData = data; 
@@ -360,7 +367,6 @@ socket.on('resultsRevealed', (data) => {
     const revealQuestionHeader = document.getElementById('question-text-reveal');
     questionText.innerText = data.question;
     
-    showGamePhase('phase-reveal');
     
     
     // Alte Buttons resetten falls nötig
@@ -616,6 +622,7 @@ socket.on('youAreHost', () => {
 
 
 socket.on('error', (msg) => alert(msg));
+
 
 
 
