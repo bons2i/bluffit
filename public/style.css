@@ -319,12 +319,12 @@ textarea.neon-input {
     .header-content {
         padding: 0 10px;
     }
-
-    .flip {
+     .flip {
         display: inline-block;
-        transform: rotate(180deg) translateY(-0.06em);;
-        margin-left: 0.6em;
+        transform: rotate(180deg) translateY(-0.06em);
+        margin-left: -0.6em;
     }
+   
 }
 
 /* Buttons auf dem Handy größer machen */
@@ -367,5 +367,6 @@ textarea.neon-input {
   transform: rotate(180deg) translateY(-0.055em);;
   margin-left: -1.2em;
 }
+
 
 
