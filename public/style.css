@@ -355,3 +355,10 @@ textarea.neon-input {
     background: rgba(57, 255, 20, 0.1) !important;
     color: #ffffff !important;
 }
+
+.flip {
+  display: inline-block;
+  transform: rotate(180deg) translateY(-0.055em);;
+  margin-left: -1.2em;
+}
+
