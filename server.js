@@ -1,335 +1,661 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const fs = require('fs');
+const socket = io();
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+// Status Variablen
+let myRoomId = null;
+let amIHost = false;
+let myLastAnswer = ""; 
+let currentRevealData = null;
+let currentRound = 0;
+let maxRounds = 0;
+let showTicks = false;
+let currentPhase = "LOBBY";
 
-const PORT = process.env.PORT || 3000;
+// --- DOM Elemente referenzieren ---
+const landingSection = document.getElementById('landing-section');
+const gameRoomSection = document.getElementById('game-room-section');
+const gameHeader = document.getElementById('game-header');
+const joinDialog = document.getElementById('join-dialog');
 
-app.use(express.static('public'));
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/public/index.html');
-});
+const phaseLobby = document.getElementById('phase-lobby');
+const phaseWriting = document.getElementById('phase-writing');
+const phaseVoting = document.getElementById('phase-voting');
+const phaseReveal = document.getElementById('phase-reveal');
+const phaseEndResults = document.getElementById('phase-end-results');
 
-let rooms = {}; // Hier speichern wir alle aktiven Räume
-let questions = JSON.parse(fs.readFileSync('questions.json', 'utf8'));
+const roomCodeDisplay = document.getElementById('room-code-display');
+const playerList = document.getElementById('player-list');
+const questionText = document.getElementById('question-text');
+const myAnswerInput = document.getElementById('my-answer-input');
+const waitingMessage = document.getElementById('waiting-message');
 
-// Hilfsfunktion zum Mischen von Arrays (Fisher-Yates Shuffle)
-function shuffle(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
+const correctAnswerDisplay = document.getElementById('correct-answer-display');
+const votingOptions = document.getElementById('voting-options');
+const votingDistribution = document.getElementById('voting-distribution');
+const finalPointsList = document.getElementById('final-points-list');
+
+const roundSummary = document.getElementById('round-summary');
+const roundPointsGrid = document.getElementById('round-points-grid');
+
+const createDialog = document.getElementById('create-dialog');
+const createNameInput = document.getElementById('create-name-input');
+const createCodeInput = document.getElementById('create-code-input');
+const btnCreateConfirm = document.getElementById('btn-create-confirm');
+const btnCreateCancel = document.getElementById('btn-create-cancel');
+
+const createRoundsInput = document.getElementById('create-rounds-input');
+const roundCounter = document.getElementById('round-counter');
+const podiumList = document.getElementById('podium-list');
+
+// Host Controls & Buttons
+const hostControls = document.getElementById('host-controls');
+const btnStartGame = document.getElementById('btn-start-game');
+const btnShowResults = document.getElementById('btn-show-results');
+const btnRevealAnswer = document.getElementById('btn-reveal-answer');
+const btnStartNextRound = document.getElementById('btn-start-next-round');
+const btnRevealAuthors = document.getElementById('btn-reveal-authors');
+
+// Sonstige Buttons
+const btnCreateRoom = document.getElementById('btn-create-room');
+const btnShowJoin = document.getElementById('btn-show-join');
+const btnJoinConfirm = document.getElementById('btn-join-confirm');
+const btnJoinCancel = document.getElementById('btn-join-cancel');
+const btnSubmitAnswer = document.getElementById('btn-submit-answer');
+
+const revealStep1 = document.getElementById('reveal-step-1');
+const revealStep2 = document.getElementById('reveal-step-2');
+
+// --- HILFSFUNKTIONEN ---
+
+function showSection(sectionId) {
+    landingSection.classList.add('hidden');
+    gameRoomSection.classList.add('hidden');
+    joinDialog.classList.add('hidden');
+    document.getElementById(sectionId).classList.remove('hidden');
+    if(sectionId === 'game-room-section') gameHeader.classList.remove('hidden');
 }
 
-io.on('connection', (socket) => {
-    // Raum erstellen
-    socket.on('createRoom', ({ playerName, customCode, maxRounds }) => {
-    let roomId;
+function showGamePhase(phaseId) {
+    phaseLobby.classList.add('hidden');
+    phaseWriting.classList.add('hidden');
+    phaseVoting.classList.add('hidden');
+    phaseReveal.classList.add('hidden');
+    
+    // Hier wird auf die Variable zugegriffen, die wir gerade oben erstellt haben
+    if (phaseEndResults) phaseEndResults.classList.add('hidden'); 
+    
+    const target = document.getElementById(phaseId);
+    if (target) target.classList.remove('hidden');
+}
 
-    // Prüfen: Wurde ein Code eingegeben UND ist dieser noch nicht vergeben?
-    if (customCode && customCode.trim().length > 0) {
-        if (!rooms[customCode]) {
-            roomId = customCode.trim().toUpperCase();
-        } else {
-            // Falls der Code schon existiert, hängen wir eine Zufallszahl an
-            roomId = customCode.trim().toUpperCase() + Math.floor(Math.random() * 10);
+function updatePlayerListUI(players) {
+   if (!players) return;
+    playerList.innerHTML = '';
+    
+    players.forEach(p => {
+        const li = document.createElement('li');
+        li.setAttribute('data-id', p.id);
+        const hostIndicator = (p.id === players[0].id) ? '⭐ ' : ''; 
+        
+        let tick = '';
+        
+        // LOGIK-FILTER:
+        if (currentPhase === "WRITING") {
+            // Nur Haken zeigen, wenn in der Schreib-Phase eine Antwort da ist
+            if (p.currentAnswer) tick = '✔';
+        } 
+        else if (currentPhase === "VOTING") {
+            // Nur Haken zeigen, wenn in der Voting-Phase ein Vote da ist
+            // Achtung: Der Server muss das Feld 'votedFor' mitschicken!
+            if (p.votedFor) tick = '✔';
         }
+        // In REVEAL oder LOBBY bleibt tick leer ("")
+
+        li.innerHTML = `${hostIndicator}${p.name} <span>Punkte: ${p.points || 0} <span class="tick-mark">${tick}</span></span>`;
+        playerList.appendChild(li);
+    });
+
+    // Host-Beenden-Button
+    if (amIHost) {
+        const endBtn = document.createElement('button');
+        endBtn.innerText = "Spiel beenden";
+        endBtn.className = "btn neon-btn-plain";
+        endBtn.style.width = "100%";
+        endBtn.style.marginTop = "10px";
+        endBtn.style.fontSize = "0.7rem";
+        endBtn.style.background = "transparent";
+        endBtn.style.color = "rgba(255, 255, 255, 0.5)";
+        endBtn.onclick = () => {
+            if(confirm("Spiel wirklich für alle beenden?")) socket.emit('forceEndGame', myRoomId);
+        };
+        playerList.appendChild(endBtn);
+    }
+}
+
+
+
+// --- EVENT LISTENERS ---
+
+// 1. Create Dialog anzeigen
+btnCreateRoom.addEventListener('click', () => {
+    joinDialog.classList.add('hidden'); // Falls der andere offen ist
+    createDialog.classList.remove('hidden');
+});
+
+// 2. Abbrechen
+btnCreateCancel.addEventListener('click', () => {
+    createDialog.classList.add('hidden');
+});
+
+// 3. Bestätigen & Erstellen
+btnCreateConfirm.addEventListener('click', () => {
+    const name = createNameInput.value.trim();
+    const code = createCodeInput.value.trim(); // Das ist dein Wunsch-Code Feld
+    const rounds = createRoundsInput.value;
+
+    if (name) {
+        socket.emit('createRoom', { 
+            playerName: name, 
+            customCode: code, 
+            maxRounds: rounds 
+        });
     } else {
-        // Kein Wunsch-Code -> komplett zufällig
-        roomId = Math.random().toString(36).substring(2, 5).toUpperCase();
+        alert("Bitte gib einen Namen ein!");
     }
+});
+
+// In der showSection Funktion musst du den neuen Dialog auch verstecken:
+function showSection(sectionId) {
+    landingSection.classList.add('hidden');
+    gameRoomSection.classList.add('hidden');
+    joinDialog.classList.add('hidden');
+    createDialog.classList.add('hidden'); // NEU
     
-    rooms[roomId] = {
-        host: socket.id,
-        players: [{ id: socket.id, name: playerName, points: 0, currentAnswer: '', votedFor: null, roundPoints: 0 }],
-        phase: 'LOBBY',
-        currentRound: 0,
-        maxRounds: parseInt(maxRounds) || 0,
-        currentQuestion: null,
-        shuffledAnswers: []
+    document.getElementById(sectionId).classList.remove('hidden');
+    if(sectionId === 'game-room-section') gameHeader.classList.remove('hidden');
+}
+
+btnShowJoin.addEventListener('click', () => joinDialog.classList.remove('hidden'));
+btnJoinCancel.addEventListener('click', () => joinDialog.classList.add('hidden'));
+
+btnJoinConfirm.addEventListener('click', () => {
+    const name = document.getElementById('join-name-input').value;
+    const code = document.getElementById('join-code-input').value.toUpperCase();
+    if(name && code) socket.emit('joinRoom', { roomId: code, playerName: name });
+});
+
+btnStartGame.addEventListener('click', () => {
+    if(amIHost) socket.emit('nextQuestion', myRoomId);
+});
+
+btnSubmitAnswer.addEventListener('click', () => {
+    const answer = myAnswerInput.value.trim();
+    if(answer && myRoomId) {
+        myLastAnswer = answer;
+        socket.emit('submitAnswer', { roomId: myRoomId, answer: answer });
+
+        myAnswerInput.classList.add('hidden'); // Versteckt das Textfeld
+        btnSubmitAnswer.classList.add('hidden'); // Versteckt den Button
+        
+        waitingMessage.classList.remove('hidden'); // Zeigt die Warte-Nachricht
+    }
+});
+
+
+
+btnRevealAnswer.addEventListener('click', () => {
+    socket.emit('triggerHighlightCorrect', myRoomId);
+    btnRevealAnswer.classList.add('hidden');
+    // Jetzt darf man Autoren aufdecken
+    btnRevealAuthors.classList.remove('hidden');
+});
+
+// 3. Autoren aufdecken 
+btnRevealAuthors.addEventListener('click', () => {
+    socket.emit('triggerShowAuthors', myRoomId);
+    btnRevealAuthors.classList.add('hidden');
+    // Jetzt darf man nächste Runde starten
+    btnStartNextRound.classList.remove('hidden');
+});
+
+
+document.getElementById('btn-rematch').onclick = () => {
+    if (amIHost) {
+        socket.emit('rematch', myRoomId);
+    } else {
+        alert("Nur der Host kann ein Rematch starten.");
+    }
+};
+
+
+
+// --- SOCKET LISTENERS ---
+
+socket.on('roomCreated', ({ roomId, players, maxRounds: serverMaxRounds }) => {
+    myRoomId = roomId;
+    amIHost = true;
+    maxRounds = serverMaxRounds; // Speichern!
+    roomCodeDisplay.innerText = roomId;
+    hostControls.classList.remove('hidden');
+    btnStartGame.classList.remove('hidden');
+    updatePlayerListUI(players);
+    showSection('game-room-section');
+    showGamePhase('phase-lobby');
+});
+
+socket.on('joinedSuccess', (roomId) => {
+    myRoomId = roomId;
+    amIHost = false;
+    roomCodeDisplay.innerText = roomId;
+    hostControls.classList.add('hidden');
+    showSection('game-room-section');
+    showGamePhase('phase-lobby');
+});
+
+socket.on('updatePlayerList', (players) => updatePlayerListUI(players));
+
+socket.on('newQuestion', (data) => {
+    currentPhase = "WRITING";
+    showGamePhase('phase-writing');
+    showTicks = true;
+    questionText.innerText = data.question;
+    document.getElementById('voting-question-display').innerText = data.question;
+    document.getElementById('reveal-question-display').innerText = data.question;
+    currentRound = data.currentRound;
+    maxRounds = data.maxRounds;
+
+    
+
+    // UI Reset
+    myAnswerInput.value = '';
+    myAnswerInput.disabled = false;
+    myAnswerInput.classList.remove('hidden'); 
+    btnSubmitAnswer.classList.remove('hidden'); 
+    waitingMessage.classList.add('hidden');
+    
+
+    // Rundenzähler Text
+    const roundText = maxRounds > 0 ? `Runde: ${currentRound} / ${maxRounds}` : `Runde: ${currentRound}`;
+    roundCounter.innerText = roundText;
+    
+    updatePlayerListUI(data.players);
+    
+});
+
+socket.on('showVotingOptions', (answers) => {
+    currentPhase = "VOTING";
+    showGamePhase('phase-voting');
+    document.getElementById('voting-question-display').innerText = questionText.innerText;
+
+    document.querySelectorAll('.tick-mark').forEach(el => el.innerText = '');
+    showTicks = false;
+    
+    const votingOptionsContainer = document.getElementById('voting-options');
+    votingOptionsContainer.innerHTML = ''; 
+    
+    let selectedAnswer = null;
+
+    // 1. ZUERST den Bestätigungs-Button erstellen (damit er oben im Loop bekannt ist)
+    const confirmBtn = document.createElement('button');
+    confirmBtn.innerText = "🔒 Auswahl bestätigen";
+    confirmBtn.className = "btn neon-btn-pink";
+    confirmBtn.disabled = true; 
+    confirmBtn.style.opacity = "0.5"; 
+    confirmBtn.style.cursor = "not-allowed";
+    confirmBtn.style.marginTop = "20px";
+    confirmBtn.style.width = "100%";
+
+    // 2. Antwort-Buttons erstellen
+    answers.forEach(answer => {
+        if (answer === myLastAnswer) return;
+
+        const btn = document.createElement('button');
+        btn.className = 'btn neon-btn-blue answer-option-btn';
+        btn.innerText = answer;
+        btn.style.width = "100%";
+        btn.style.marginBottom = "10px";
+        
+        btn.onclick = () => {
+            // Alle Buttons zurücksetzen
+            document.querySelectorAll('.answer-option-btn').forEach(b => {
+                b.classList.remove('neon-btn-green', 'selected'); // 'selected' auch entfernen
+                b.classList.add('neon-btn-blue');
+            });
+
+            // Aktuellen Button hervorheben
+            btn.classList.remove('neon-btn-blue');
+            btn.classList.add('neon-btn-green', 'selected'); 
+            
+            selectedAnswer = answer;
+
+            // Bestätigen-Button aktivieren
+            confirmBtn.disabled = false;
+            confirmBtn.style.opacity = "1";
+            confirmBtn.style.cursor = "pointer";
+        };
+        votingOptionsContainer.appendChild(btn);
+    });
+
+    // 3. Bestätigungs-Logik
+    confirmBtn.onclick = () => {
+        if (selectedAnswer) {
+            socket.emit('submitVote', { roomId: myRoomId, answerText: selectedAnswer });
+            
+            const myLi = document.querySelector(`li[data-id="${socket.id}"] .tick-mark`);
+            if(myLi) myLi.innerText = '✔';
+    
+            votingOptionsContainer.innerHTML = '';
+
+            const lockedBtn = document.createElement('button');
+            lockedBtn.className = 'btn neon-btn-green';
+            lockedBtn.innerText = selectedAnswer;
+            lockedBtn.style.width = "100%";
+            lockedBtn.disabled = true;
+            
+            const statusMsg = document.createElement('div');
+            statusMsg.style.textAlign = "center";
+            statusMsg.style.marginTop = "25px";
+            statusMsg.innerHTML = `
+                <p style="font-size: 1.2rem; margin-bottom: 5px;">✔ Auswahl eingeloggt</p>
+                <p style="font-size: 0.9rem; opacity: 0.8;">Warte auf restliche Stimmen...</p>
+            `;
+
+            votingOptionsContainer.appendChild(lockedBtn);
+            votingOptionsContainer.appendChild(statusMsg);
+        }
     };
-
-    socket.join(roomId);
-    // WICHTIG: Hier schicken wir die finale roomId zurück an den Host
-    socket.emit('roomCreated', { roomId, players: rooms[roomId].players, maxRounds: rooms[roomId].maxRounds });
+    
+    // Den Button am Ende anhängen
+    votingOptionsContainer.appendChild(confirmBtn);
 });
 
-    // Raum beitreten
-    socket.on('joinRoom', ({ roomId, playerName }) => {
-        if (rooms[roomId]) {
-            rooms[roomId].players.push({ id: socket.id, name: playerName, points: 0, currentAnswer: '', votedFor: null });
-            socket.join(roomId);
-            io.to(roomId).emit('updatePlayerList', rooms[roomId].players);
-            socket.emit('joinedSuccess', roomId);
-        } else {
-            socket.emit('error', 'Raum nicht gefunden');
-        }
-    });
 
-   // Spiel starten / Neue Frage (nur Host)
-    socket.on('nextQuestion', (roomId) => {
-        const room = rooms[roomId];
-        if (!room) return;
+socket.on('playerSubmitted', (playerId) => {
+    const el = document.querySelector(`li[data-id="${playerId}"] .tick-mark`);
+    if(el) el.innerText = '✔';
+});
 
-        room.currentRound++;
-        
-        // Prüfen ob Ende erreicht
-        if (room.maxRounds > 0 && room.currentRound > room.maxRounds) {
-            io.to(roomId).emit('gameEnded', room.players);
-        } else {
-            // --- WICHTIG: Vorherige Antworten der Spieler löschen! ---
-            room.players.forEach(p => {
-                p.currentAnswer = '';
-                p.votedFor = null;
-                p.roundPoints = 0;
-            });
 
-            // --- WICHTIG: Eine zufällige Frage auswählen ---
-            const randomIndex = Math.floor(Math.random() * questions.length);
-            const randomQ = questions[randomIndex]; // Hier lag der Fehler (randomQ war nicht definiert)
-            room.currentQuestion = randomQ;
-            room.phase = 'WRITING';
 
-            io.to(roomId).emit('newQuestion', { 
-                question: randomQ.question, 
-                currentRound: room.currentRound, 
-                maxRounds: room.maxRounds 
-            });
-        }
-    });
-
-    // Manuelles Beenden durch Host
-    socket.on('forceEndGame', (roomId) => {
-        const room = rooms[roomId];
-        if (socket.id === room.host) {
-            io.to(roomId).emit('gameEnded', room.players);
-        }
-    });
-
-    // Antwort eines Spielers empfangen
-    socket.on('submitAnswer', ({ roomId, answer }) => {
-        const room = rooms[roomId];
-        if (!room) return;
-        
-        const player = room.players.find(p => p.id === socket.id);
-        if (player) {
-            player.currentAnswer = answer;
-            io.to(roomId).emit('playerSubmitted', socket.id);
-
-            const allFinished = room.players.every(p => p.currentAnswer && p.currentAnswer.length > 0);
-
-            if (allFinished) {
-                // --- AUTOMATISIERUNG ---
-                // Statt nur dem Host Bescheid zu geben, starten wir direkt das Voting:
-                startVotingLogic(roomId); 
-            }
-        }
-    });
-
-    function startVotingLogic(roomId) {
-        const room = rooms[roomId];
-        room.phase = 'VOTING';
-        
-        let allAnswers = [{ text: room.currentQuestion.answer, isCorrect: true, creator: 'SERVER' }];
-        room.players.forEach(p => {
-            if(p.currentAnswer) {
-                allAnswers.push({ text: p.currentAnswer, isCorrect: false, creator: p.id });
-            }
-        });
-
-        room.shuffledAnswers = shuffle(allAnswers);
-        io.to(roomId).emit('showVotingOptions', room.shuffledAnswers.map(a => a.text));
+// SCHRITT A: Liste bauen (Wer hat was gewählt?)
+socket.on('resultsRevealed', (data) => {
+    currentPhase = "REVEAL";
+    showGamePhase('phase-reveal');
+    // Frage anzeigen
+    const questionToShow = data.question || questionText.innerText;
+    
+    const revealQ = document.getElementById('reveal-question-display');
+    if (revealQ) {
+        revealQ.innerText = questionToShow;
     }
+    
+    document.querySelectorAll('.tick-mark').forEach(el => el.innerText = '');
+    showTicks = false;
+    roundSummary.classList.add('hidden');
+    currentRevealData = data; 
 
-
-    // Spieler gibt seine Stimme ab
-    socket.on('submitVote', ({ roomId, answerText }) => {
-        const room = rooms[roomId];
-        if (!room) return; // Sicherheitsscheck hinzugefügt
-        const player = room.players.find(p => p.id === socket.id);
-
-        if (player && room.phase === 'VOTING') {
-            player.votedFor = answerText;
-
-            // 1. Allen zeigen, dass dieser Spieler gewählt hat
-            io.to(roomId).emit('playerSubmitted', socket.id);
-
-            // 2. Prüfen, ob ALLE Spieler gewählt haben
-            const allVoted = room.players.every(p => p.votedFor !== null);
-
-            if (allVoted) {
-                // HIER WAR DER FEHLER: Komma vor der 2000 hinzugefügt
-                setTimeout(() => {
-                    room.phase = 'REVEAL'; 
-
-                    // Punkteberechnung direkt hier durchführen, damit die Daten aktuell sind
-                    // Schritt A: Alle Rundenpunkte auf 0 setzen
-                    room.players.forEach(p => p.roundPoints = 0);
-
-                    // Schritt B: Punkte verteilen
-                    room.players.forEach(voter => {
-                        if (!voter.votedFor) return;
-                        if (voter.votedFor === room.currentQuestion.answer) {
-                            voter.points += 3;
-                            voter.roundPoints += 3;
-                        } else {
-                            const liar = room.players.find(p => p.currentAnswer === voter.votedFor);
-                            if (liar && liar.id !== voter.id) {
-                                liar.points += 2;
-                                liar.roundPoints += 2;
-                            }
-                        }
-                    });
-
-                    io.to(roomId).emit('resultsRevealed', {
-                        shuffledAnswers: room.shuffledAnswers,
-                        players: room.players,
-                        correctAnswer: room.currentQuestion.answer
-                    });
-                }, 1000); 
-            }
-        }
-    });
-
-    socket.on('revealResults', (roomId) => {
-        const room = rooms[roomId];
-        if (socket.id !== room.host) return;
-
-        room.phase = 'REVEAL';
-
-        // Punkteberechnung
-        room.players.forEach(player => {
-            let earnedPoints = 0; // Punkte nur für diese Runde
-
-            // Nur berechnen, wenn der Spieler überhaupt gevotet hat
-            if (player.votedFor) {
-                // 1. Hat der Spieler die richtige Antwort gewählt?
-                if (player.votedFor === room.currentQuestion.answer) {
-                    earnedPoints += 3;
-                } else {
-                    // 2. Er hat eine Lüge gewählt. Wer war der Urheber?
-                    // WICHTIG: Urheber finden, aber nicht sich selbst Punkte geben
-                    const liar = room.players.find(p => p.currentAnswer === player.votedFor);
-                    if (liar && liar.id !== player.id) {
-                        // Der Lügner bekommt Punkte (wird beim Lügner-Loop draufgerechnet)
-                        // Wir müssen das hier beim Lügner direkt addieren:
-                        liar.points += 2;
-                        
-                        // Wir müssen dem Lügner auch bescheid sagen, dass er Punkte bekommen hat
-                        // Da wir aber gerade über den "Voter" iterieren, ist das tricky.
-                        // BESSERER WEG UNTEN:
-                    }
-                }
-            }
-        });
-
-        // SAUBERE BERECHNUNG NEU AUFSETZEN (um Fehler zu vermeiden):
-        // Schritt A: Alle Rundenpunkte auf 0 setzen
-        room.players.forEach(p => p.roundPoints = 0);
-
-        // Schritt B: Punkte verteilen
-        room.players.forEach(voter => {
-            if (!voter.votedFor) return;
-
-            // Fall 1: Voter hat Richtig getippt
-            if (voter.votedFor === room.currentQuestion.answer) {
-                voter.points += 3;
-                voter.roundPoints += 3;
-            } 
-            // Fall 2: Voter hat Lüge getippt
-            else {
-                const liar = room.players.find(p => p.currentAnswer === voter.votedFor);
-                if (liar && liar.id !== voter.id) {
-                    liar.points += 2;
-                    liar.roundPoints += 2;
-                }
-            }
-        });
-
-        // Daten senden (jetzt inklusive roundPoints im player objekt)
-        io.to(roomId).emit('resultsRevealed', {
-            players: room.players,
-            correctAnswer: room.currentQuestion.answer,
-            shuffledAnswers: room.shuffledAnswers
-        });
-    });
-
-    socket.on('triggerRevealStep2', (roomId) => {
-        const room = rooms[roomId];
-        if (socket.id === room.host) {
-            // Sag ALLEN Clients im Raum: "Zeigt jetzt die Lösung!"
-            io.to(roomId).emit('showFinalResult');
-        }
-    });
-
-    socket.on('triggerHighlightCorrect', (roomId) => {
-        const room = rooms[roomId];
-        if (socket.id === room.host) {
-            io.to(roomId).emit('highlightCorrectAnswer');
-        }
-    });
-
-    // NEU: Host will die Autoren aufdecken
-    socket.on('triggerShowAuthors', (roomId) => {
-        const room = rooms[roomId];
-        if (socket.id === room.host) {
-            io.to(roomId).emit('showAuthors');
-        }
-    });
-
-    socket.on('rematch', (roomId) => {
-        const room = rooms[roomId];
-        if (!room) return;
-
-        // Nur der Host darf das Rematch starten
-        if (socket.id !== room.host) return;
-
-        // 1. Alle Punkte und Status-Werte zurücksetzen
-        room.currentRound = 0;
-        room.players.forEach(p => {
-            p.points = 0;
-            p.currentAnswer = '';
-            p.votedFor = null;
-            p.roundPoints = 0;
-        });
-
-        // 2. Allen im Raum sagen, dass es von vorne losgeht (zurück in die Lobby)
-        io.to(roomId).emit('rematchStarted', room.players);
-    });
-
-    socket.on('disconnect', () => {
-        for (const roomId in rooms) {
-            const room = rooms[roomId];
-            const playerIndex = room.players.findIndex(p => p.id === socket.id);
-
-            if (playerIndex !== -1) {
-                const isHost = (socket.id === room.host);
-                room.players.splice(playerIndex, 1); // Spieler entfernen
-
-                if (room.players.length === 0) {
-                    delete rooms[roomId]; // Raum löschen, wenn leer
-                } else if (isHost) {
-                    // Neuer Host ist der erste verbleibende Spieler
-                    room.host = room.players[0].id;
-                    // Alle informieren, wer der neue Host ist
-                    io.to(roomId).emit('updatePlayerList', room.players);
-                    io.to(room.host).emit('youAreHost'); 
-                } else {
-                    io.to(roomId).emit('updatePlayerList', room.players);
-                }
-            }
-        }
-    });
-
-}); // Ende connection
     
 
-server.listen(PORT, () => {
-    console.log(`Server läuft auf Port ${PORT}`);
+    
+    
+    
+    // Alte Buttons resetten falls nötig
+    if(amIHost) {
+        btnRevealAnswer.classList.remove('hidden');
+        btnRevealAuthors.classList.add('hidden'); // Erst später sichtbar
+        btnStartNextRound.classList.add('hidden');
+    }
 
+    votingDistribution.innerHTML = '';
+
+    data.shuffledAnswers.forEach((ans, index) => {
+        const div = document.createElement('div');
+        div.className = 'neon-border-blue answer-reveal-card'; // Klasse für Styling
+        div.style.padding = '15px';
+        div.style.margin = '10px 0';
+        div.style.background = 'var(--bg-card)';
+        
+        // WICHTIG: Wir speichern Infos im HTML Element, um sie später zu finden
+        div.dataset.answerText = ans.text; 
+        div.dataset.creatorId = ans.creator; // Wer hat's geschrieben?
+
+        // Wer hat gewählt?
+        const voters = data.players.filter(p => p.votedFor === ans.text);
+        const voterNames = voters.map(v => v.name).join(', ');
+
+        div.innerHTML = `
+            <div style="font-size: 1.2rem; font-weight: bold;">${ans.text}</div>
+            <div style="color: var(--text-light); opacity: 0.8; margin-top: 5px;">
+                ${voterNames ? 'Gewählt von: ' + voterNames : 'Keine Stimmen'}
+            </div>
+            <div class="author-placeholder"></div>
+        `;
+        votingDistribution.appendChild(div);
+    });
+    updatePlayerListUI(data.players);
 });
+
+// SCHRITT B: Richtige Antwort grün machen & Punkte updaten
+socket.on('highlightCorrectAnswer', () => {
+    const allCards = document.querySelectorAll('.answer-reveal-card');
+    
+    allCards.forEach(card => {
+        // Prüfen, ob das die richtige Antwort ist
+        if (card.dataset.answerText === currentRevealData.correctAnswer) {
+            card.classList.remove('neon-border-blue');
+            card.classList.add('reveal-correct'); // Die neue CSS Klasse!
+            
+            // Optional: Text "RICHTIG" hinzufügen
+            const info = document.createElement('div');
+            info.style.color = 'var(--neon-green)';
+            info.style.fontWeight = 'bold';
+            info.innerText = "★ RICHTIGE ANTWORT ★";
+            card.prepend(info);
+        }
+    });
+
+    // JETZT erst Punkte in der Sidebar updaten (Spannung!)
+    updatePlayerListUI(currentRevealData.players);
+});
+
+// SCHRITT C: Autoren und Puntke einblenden
+socket.on('showAuthors', () => {
+    const allCards = document.querySelectorAll('.answer-reveal-card');
+
+   allCards.forEach(card => {
+        const creatorId = card.dataset.creatorId;
+        const placeholder = card.querySelector('.author-placeholder');
+        
+        if (creatorId === 'SERVER') {
+            // Spezialfall: Die Wahrheit leer lassen
+            placeholder.innerHTML = "";
+        } else {
+            // Normalfall: Lüge eines Spielers
+            const pName = currentRevealData.players.find(p => p.id === creatorId)?.name || "Unbekannt";
+            placeholder.innerHTML = `<span class="author-info">✍️ Von: ${pName}</span>`;
+        }
+    });
+
+    const roundSummary = document.getElementById('round-summary');
+    const roundPointsContainer = document.getElementById('round-points-grid');
+    roundSummary.classList.remove('hidden');
+    roundPointsContainer.style.display = 'block'; 
+    roundPointsContainer.innerHTML = '';
+
+    currentRevealData.players.forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'simple-point-row'; 
+        const scoreColor = p.roundPoints > 0 ? 'var(--neon-green)' : '#888';
+        row.innerHTML = `<span style="color: #fff; font-weight: 500;">${p.name}:</span>
+                         <span style="color: ${scoreColor}; font-weight: bold;">${p.roundPoints > 0 ? '+' : ''}${p.roundPoints}</span>`;
+        roundPointsContainer.appendChild(row);
+    });
+
+    // --- HIER IST DIE KORREKTE BUTTON-LOGIK ---
+    if (amIHost) {
+        btnStartNextRound.classList.remove('hidden');
+
+        if (maxRounds > 0 && currentRound >= maxRounds) {
+            btnStartNextRound.innerText = "🏆 Zur Siegerehrung";
+            btnStartNextRound.style.background = "var(--neon-pink)"; 
+            btnStartNextRound.style.boxShadow = "0 0 15px var(--neon-pink)";
+            btnStartNextRound.onclick = () => {
+                socket.emit('forceEndGame', myRoomId);
+            };
+        } else {
+            btnStartNextRound.innerText = "Nächste Runde starten";
+            btnStartNextRound.style.background = ""; // Reset auf Standard
+            btnStartNextRound.style.boxShadow = "";
+            btnStartNextRound.onclick = () => {
+                btnStartNextRound.classList.add('hidden');
+                socket.emit('nextQuestion', myRoomId);
+            };
+        }
+    }
+});
+
+socket.on('showFinalResult', () => {
+    // 1. Von Schritt 1 ("Wer hat was gewählt") zu Schritt 2 ("Lösung") wechseln
+    revealStep1.classList.add('hidden');
+    revealStep2.classList.remove('hidden');
+
+    // 2. Richtige Antwort anzeigen (Daten kommen aus dem Speicher currentRevealData)
+    correctAnswerDisplay.innerText = currentRevealData.correctAnswer;
+    
+    // 3. PUNKTE UPDATEN 
+    updatePlayerListUI(currentRevealData.players);
+    
+
+    // 4. Die Zusammenfassung ("Punktestand aktuell") füllen
+    finalPointsList.innerHTML = '';
+    currentRevealData.players.forEach(p => {
+        const li = document.createElement('li');
+        li.innerText = `${p.name}: ${p.points} Punkte`;
+        finalPointsList.appendChild(li);
+    });
+
+    // 5. Nur der Host bekommt den Button für die nächste Runde
+    if (amIHost) {
+    btnStartNextRound.classList.remove('hidden');
+
+    // Prüfen: Sind wir in der allerletzten Runde?
+    if (maxRounds > 0 && currentRound >= maxRounds) {
+        // Wir sind am Ende!
+        btnStartNextRound.innerText = "🏆 Zur Siegerehrung";
+        btnStartNextRound.style.background = "var(--neon-pink)"; 
+        btnStartNextRound.style.boxShadow = "0 0 15px var(--neon-pink)";
+        
+        // Wir ändern die Funktion des Buttons: Er soll nicht mehr "nextQuestion" 
+        // senden, sondern direkt das Ende triggern
+        btnStartNextRound.onclick = () => {
+            socket.emit('forceEndGame', myRoomId);
+        };
+    } else {
+        // Normaler Spielverlauf
+        btnStartNextRound.innerText = "Nächste Runde starten";
+        btnStartNextRound.onclick = () => {
+            btnStartNextRound.classList.add('hidden'); // Button direkt verstecken gegen Doppel-Klicks
+            socket.emit('nextQuestion', myRoomId);
+        };
+    }
+}
+});
+
+
+// Finale Siegerehrung
+socket.on('gameEnded', (players) => {
+    if (amIHost) {
+        btnStartNextRound.classList.add('hidden');
+        hostControls.classList.add('hidden');
+    }
+
+    console.log("Spiel beendet. Ergebnisse:", players);
+    
+    // 1. Umschalten auf die Endphase
+    showGamePhase('phase-end-results');
+
+    const rematchBtn = document.getElementById('btn-rematch');
+    if (rematchBtn) {
+        if (amIHost) {
+            rematchBtn.classList.remove('hidden'); // Host sieht ihn
+        } else {
+            rematchBtn.classList.add('hidden');    // Gäste sehen ihn nicht
+        }
+    }
+    
+    // 2. Container leeren
+    const podiumList = document.getElementById('podium-list');
+    podiumList.innerHTML = '';
+
+    // 3. Spieler nach Punkten sortieren (höchste zuerst)
+    const sortedPlayers = [...players].sort((a, b) => b.points - a.points);
+
+    // 4. Liste aufbauen
+    sortedPlayers.forEach((p, index) => {
+        const resultRow = document.createElement('div');
+        resultRow.className = 'neon-border-blue';
+        resultRow.style.margin = '15px 0';
+        resultRow.style.padding = '20px';
+        resultRow.style.background = 'rgba(20, 20, 20, 0.8)';
+        resultRow.style.borderRadius = '10px';
+        resultRow.style.display = 'flex';
+        resultRow.style.justifyContent = 'space-between';
+        resultRow.style.alignItems = 'center';
+
+        // Emojis für die ersten drei Plätze
+        let rankLabel = `${index + 1}.`;
+        if (index === 0) rankLabel = "👑 1.";
+        if (index === 1) rankLabel = "🥈 2.";
+        if (index === 2) rankLabel = "🥉 3.";
+
+        resultRow.innerHTML = `
+            <span style="font-size: 1.5rem; color: #fff; font-weight: bold;">${rankLabel} ${p.name}</span>
+            <span style="font-size: 1.5rem; color: var(--neon-green); font-weight: bold;">${p.points} Pkt.</span>
+        `;
+        
+        podiumList.appendChild(resultRow);
+    });
+
+    // 5. Sidebar verstecken (optional, damit das Podium mehr Platz hat)
+    document.getElementById('game-header').classList.add('hidden');
+});
+
+socket.on('rematchStarted', (players) => {
+    // Zurück in die Lobby
+    showTicks = false;
+    updatePlayerListUI(players);
+    showGamePhase('phase-lobby');
+    
+    // Header wieder einblenden (falls er versteckt wurde)
+    gameHeader.classList.remove('hidden');
+    
+    // Host-Start-Button wieder zeigen
+    if (amIHost) {
+        hostControls.classList.remove('hidden');
+        btnStartGame.classList.remove('hidden');
+        // Reset des "Nächste Runde" Buttons für den nächsten Durchgang
+        btnStartNextRound.innerText = "Nächste Runde starten";
+        btnStartNextRound.style.background = "";
+        btnStartNextRound.style.boxShadow = "";
+    }
+});
+
+socket.on('youAreHost', () => {
+    amIHost = true;
+    hostControls.classList.remove('hidden');
+    // Falls wir in der Lobby sind, Start-Button zeigen
+    if (phaseLobby.classList.contains('hidden') === false) {
+        btnStartGame.classList.remove('hidden');
+    }
+    alert("Der Host hat das Spiel verlassen. Du bist jetzt der neue Host!");
+});
+
+
+socket.on('error', (msg) => alert(msg));
+
+
+
+
+
+
+
+
