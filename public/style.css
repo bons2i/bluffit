@@ -8,6 +8,11 @@
     --text-light: #e2e8f0;
 }
 
+/* FIX 1: Verhindert, dass Padding die Elemente über den Bildschirmrand schiebt */
+* {
+    box-sizing: border-box;
+}
+
 body {
     margin: 0;
     font-family: 'Segoe UI', Roboto, sans-serif;
@@ -16,6 +21,9 @@ body {
     display: flex;
     justify-content: center;
     min-height: 100vh;
+    /* FIX 2: Verhindert seitliches Wackeln auf Handys */
+    overflow-x: hidden;
+    width: 100%;
 }
 
 /* Hilfsklassen */
@@ -70,7 +78,7 @@ body {
     border: 2px solid var(--neon-blue);
     color: var(--text-light);
     font-size: 1rem;
-    box-sizing: border-box; /* Wichtig damit padding nicht die Breite sprengt */
+    box-sizing: border-box; 
 }
 .neon-input:focus { outline: none; box-shadow: 0 0 10px var(--neon-blue); }
 
@@ -87,7 +95,7 @@ textarea.neon-input {
 #game-header { text-align: right; padding: 10px; font-size: 1.2rem; color: var(--neon-blue); }
 .game-layout {
     display: grid;
-    grid-template-columns: 250px 1fr; /* Linke Spalte fest, rechte flexibel */
+    grid-template-columns: 250px 1fr; 
     gap: 20px;
     margin-top: 20px;
 }
@@ -113,11 +121,18 @@ textarea.neon-input {
 .tick-mark { color: var(--neon-green); text-shadow: 0 0 5px var(--neon-green); font-weight: bold;}
 
 /* Question Box */
-.question-box { font-size: 1.5rem; margin-bottom: 30px; color: #fff; }
+.question-box { 
+    font-size: 1.5rem; 
+    margin-bottom: 30px; 
+    color: #fff; 
+    border-bottom: 1px solid #444; 
+    padding-bottom: 10px;          
+    margin-bottom: 25px;
+}
 
 /* Responsive für Handys */
 @media (max-width: 768px) {
-    .game-layout { grid-template-columns: 1fr; /* Untereinander auf kleinen Screens */ }
+    .game-layout { grid-template-columns: 1fr; }
     .player-sidebar { min-height: auto; }
 }
 
@@ -130,7 +145,7 @@ textarea.neon-input {
 
 .answer-option-btn {
     text-align: left;
-    text-transform: none; /* Antworten normal anzeigen, nicht nur Caps */
+    text-transform: none; 
     width: 100%;
 }
 
@@ -138,16 +153,16 @@ textarea.neon-input {
 .reveal-correct {
     border: 4px solid var(--neon-green) !important;
     box-shadow: 0 0 20px var(--neon-green), inset 0 0 20px var(--neon-green);
-    transform: scale(1.02); /* Leicht vergrößern */
+    transform: scale(1.02); 
     transition: all 0.5s ease;
 }
 
 /* Text für den Autor */
 .author-info {
-    font-size: 1.1rem;       /* Vorher 0.9rem -> Jetzt deutlich größer */
-    font-weight: bold;       /* Fettdruck für bessere Lesbarkeit */
+    font-size: 1.1rem;       
+    font-weight: bold;       
     color: var(--neon-blue); 
-    font-style: normal;      /* Kursiv rausnehmen, damit es klarer ist (optional) */
+    font-style: normal;      
     margin-top: 10px;
     display: block;
     animation: fadeIn 0.5s ease;
@@ -155,13 +170,13 @@ textarea.neon-input {
 
 .simple-point-row {
     font-size: 1.1rem;
-    padding: 8px 0;          /* Etwas mehr "Luft" nach oben/unten */
+    padding: 8px 0;          
     border-bottom: 1px solid #333;
     
     display: flex;
-    justify-content: flex-start; /* WICHTIG: Alles nach links schieben */
-    align-items: center;         /* Vertikal mittig */
-    gap: 10px;                   /* Der Abstand zwischen "Name:" und "+ Punkte" */
+    justify-content: flex-start; 
+    align-items: center;         
+    gap: 10px;                   
 }
 
 .simple-point-row:last-child {
@@ -208,22 +223,13 @@ textarea.neon-input {
         0 0 21px var(--neon-pink);
 }
 
-/* Header Layout */
-.header-content {
-    max-width: 1000px;
-    margin: 0 auto;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 5px 0;
-}
-
 /* Logo mit weißem Text und farbigem Schimmer */
 .game-logo-clean {
     font-family: 'Arial Black', sans-serif;
     color: #ffffff;
     margin: 0;
-    letter-spacing: 20px;
+    /* FIX 3: Auf Handys weniger Abstand, damit es in die Zeile passt */
+    letter-spacing: 15px;
 }
 
 .glow-blue {
@@ -255,7 +261,6 @@ textarea.neon-input {
     text-shadow: 0 0 10px var(--neon-pink), 0 0 10px var(--neon-pink); 
 }
 
-
 .neon-btn-plain:hover {
     box-shadow: 0 0 15px var(--neon-pink), 0 0 5px var(--neon-pink);
     color: #fff;
@@ -267,14 +272,86 @@ textarea.neon-input {
     color: #FFF;
 }
 
+.question-display-sub {
+    font-size: 1.3rem;      
+    font-weight: bold;      
+    margin-top: 10px;
+    margin-bottom: 20px;
+    display: block;         
+    text-align: center;     
+}
+
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
 }
 
-@keyframes pulse {
-    0% { opacity: 0.4; }
-    50% { opacity: 1; }
-    100% { opacity: 0.4; }
+/* MOBILE OPT */
+@media (max-width: 768px) {
+    .game-layout {
+        display: flex;
+        flex-direction: column; 
+    }
 
+    .player-sidebar {
+        width: 100%;       
+        order: 2;          
+        margin-top: 20px;
+        max-height: 200px; 
+        overflow-y: auto;  
+    }
+
+    .game-content {
+        order: 1;          
+        width: 100%;
+        padding: 10px;     
+    }
+
+    .game-logo-clean {
+        letter-spacing: 2px; /* FIX 3: Drastisch reduziert für Mobile */
+        font-size: 1.2rem;
+    }
+    
+    .label-minimal, .code-minimal {
+        font-size: 1.1rem;
+    }
+
+    .header-content {
+        padding: 0 10px;
+    }
+}
+
+/* Buttons auf dem Handy größer machen */
+.btn {
+    padding: 15px 20px; 
+    font-size: 1.1rem;
+    margin: 10px 0; /* FIX 4: Margin-Links/Rechts entfernt gegen Überbreite */
+    width: 100%;        
+    border-radius: 12px; 
+}
+
+.answer-option-btn {
+    min-height: 60px;   
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.2;
+}
+
+.neon-input, #my-answer-input {
+    font-size: 16px !important; 
+    padding: 12px;
+    width: 100%;
+    box-sizing: border-box; 
+}
+
+#my-answer-input {
+    height: 100px; 
+}
+
+.answer-option-btn.selected {
+    border-color: var(--neon-green) !important;
+    box-shadow: 0 0 15px var(--neon-green) !important;
+    background: rgba(57, 255, 20, 0.1) !important;
+    color: #ffffff !important;
 }
