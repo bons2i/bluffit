@@ -258,8 +258,11 @@ socket.on('newQuestion', (data) => {
     showGamePhase('phase-writing');
     showTicks = true;
     questionText.innerText = data.question;
+    document.getElementById('voting-question-display').innerText = data.question;
+    document.getElementById('reveal-question-display').innerText = data.question;
     currentRound = data.currentRound;
     maxRounds = data.maxRounds;
+
     
 
     // UI Reset
@@ -281,17 +284,27 @@ socket.on('newQuestion', (data) => {
 socket.on('showVotingOptions', (answers) => {
     currentPhase = "VOTING";
     showGamePhase('phase-voting');
+    document.getElementById('voting-question-display').innerText = questionText.innerText;
+
     document.querySelectorAll('.tick-mark').forEach(el => el.innerText = '');
-    // HIER WICHTIG: Sofort Liste neu zeichnen, damit die alten Haken verschwinden!
     showTicks = false;
     
-    // WICHTIG: Die Variable muss hier oben definiert werden
     const votingOptionsContainer = document.getElementById('voting-options');
     votingOptionsContainer.innerHTML = ''; 
     
     let selectedAnswer = null;
 
-    // 1. Antwort-Buttons erstellen
+    // 1. ZUERST den Bestätigungs-Button erstellen (damit er oben im Loop bekannt ist)
+    const confirmBtn = document.createElement('button');
+    confirmBtn.innerText = "🔒 Auswahl bestätigen";
+    confirmBtn.className = "btn neon-btn-pink";
+    confirmBtn.disabled = true; 
+    confirmBtn.style.opacity = "0.5"; 
+    confirmBtn.style.cursor = "not-allowed";
+    confirmBtn.style.marginTop = "20px";
+    confirmBtn.style.width = "100%";
+
+    // 2. Antwort-Buttons erstellen
     answers.forEach(answer => {
         if (answer === myLastAnswer) return;
 
@@ -302,32 +315,31 @@ socket.on('showVotingOptions', (answers) => {
         btn.style.marginBottom = "10px";
         
         btn.onclick = () => {
+            // Alle Buttons zurücksetzen
             document.querySelectorAll('.answer-option-btn').forEach(b => {
-                b.classList.remove('neon-btn-green');
+                b.classList.remove('neon-btn-green', 'selected'); // 'selected' auch entfernen
                 b.classList.add('neon-btn-blue');
             });
+
+            // Aktuellen Button hervorheben
             btn.classList.remove('neon-btn-blue');
-            btn.classList.add('neon-btn-green');
+            btn.classList.add('neon-btn-green', 'selected'); 
             
             selectedAnswer = answer;
-            confirmBtn.classList.remove('hidden');
+
+            // Bestätigen-Button aktivieren
+            confirmBtn.disabled = false;
+            confirmBtn.style.opacity = "1";
+            confirmBtn.style.cursor = "pointer";
         };
         votingOptionsContainer.appendChild(btn);
     });
 
-    // 2. Bestätigungs-Button erstellen
-    const confirmBtn = document.createElement('button');
-    confirmBtn.innerText = "🔒 Auswahl bestätigen";
-    confirmBtn.className = "btn neon-btn-pink hidden";
-    confirmBtn.style.marginTop = "20px";
-    confirmBtn.style.width = "100%";
-
-    // HIER IST DER FIX: Die Logik greift jetzt sicher auf den Container zu
+    // 3. Bestätigungs-Logik
     confirmBtn.onclick = () => {
         if (selectedAnswer) {
             socket.emit('submitVote', { roomId: myRoomId, answerText: selectedAnswer });
             
-            // MANUELLER FIX: Deinen eigenen Haken sofort anzeigen
             const myLi = document.querySelector(`li[data-id="${socket.id}"] .tick-mark`);
             if(myLi) myLi.innerText = '✔';
     
@@ -338,7 +350,6 @@ socket.on('showVotingOptions', (answers) => {
             lockedBtn.innerText = selectedAnswer;
             lockedBtn.style.width = "100%";
             lockedBtn.disabled = true;
-            lockedBtn.style.cursor = "default";
             
             const statusMsg = document.createElement('div');
             statusMsg.style.textAlign = "center";
@@ -353,6 +364,7 @@ socket.on('showVotingOptions', (answers) => {
         }
     };
     
+    // Den Button am Ende anhängen
     votingOptionsContainer.appendChild(confirmBtn);
 });
 
@@ -368,13 +380,21 @@ socket.on('playerSubmitted', (playerId) => {
 socket.on('resultsRevealed', (data) => {
     currentPhase = "REVEAL";
     showGamePhase('phase-reveal');
+    // Frage anzeigen
+    const questionToShow = data.question || questionText.innerText;
+    
+    const revealQ = document.getElementById('reveal-question-display');
+    if (revealQ) {
+        revealQ.innerText = questionToShow;
+    }
+    
     document.querySelectorAll('.tick-mark').forEach(el => el.innerText = '');
     showTicks = false;
     roundSummary.classList.add('hidden');
     currentRevealData = data; 
 
-    const revealQuestionHeader = document.getElementById('question-text-reveal');
-    questionText.innerText = data.question;
+    
+
     
     
     
@@ -631,6 +651,7 @@ socket.on('youAreHost', () => {
 
 
 socket.on('error', (msg) => alert(msg));
+
 
 
 
