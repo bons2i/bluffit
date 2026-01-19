@@ -134,6 +134,11 @@ textarea.neon-input {
 @media (max-width: 768px) {
     .game-layout { grid-template-columns: 1fr; }
     .player-sidebar { min-height: auto; }
+    .flip {
+        display: inline-block;
+        transform: rotate(180deg) translateY(-0.06em);
+        margin-left: -0.6em;
+    }
 }
 
 .options-grid {
@@ -367,6 +372,7 @@ textarea.neon-input {
   transform: rotate(180deg) translateY(-0.055em);;
   margin-left: -1.2em;
 }
+
 
 
 
