@@ -72,6 +72,7 @@
                     <button id="btn-start-game" class="btn neon-btn-green hidden">Spiel starten (Neue Frage)</button>
                 </div>
 
+                <!--------------------------------------------------------------------------------------------------->
                 <div id="phase-writing" class="phase-container hidden">
                     <h2 class="question-box" id="question-text">Frage wird geladen...</h2>
                     <div class="answer-input-area">
@@ -81,25 +82,28 @@
                     <p id="waiting-message" class="hidden neon-text-green">Antwort abgeschickt! Warte auf die anderen...</p>
                 </div>
 
+                <!--------------------------------------------------------------------------------------------------->
                 <div id="phase-voting" class="phase-container hidden">
                     <h2 class="question-box">Welche Antwort ist richtig?</h2>
+                    <p id="voting-question-display" class="question-display-sub"></p> 
                     <div id="voting-options" class="options-grid"></div>
                 </div>
 
+                <!--------------------------------------------------------------------------------------------------->
                 <div id="phase-reveal" class="phase-container hidden">
                     <h2 class="question-box">Auflösung</h2>
-                    
+                    <p id="reveal-question-display" class="question-display-sub"></p>
+
                     <div id="voting-distribution" class="options-grid"></div>
 
                     <div id="round-summary" class="hidden" style="margin-top: 30px; border-top: 1px solid #444; padding-top: 15px;">
-                    <h3 class="question-box" style="margin-bottom: 10px;">Punkte dieser Runde:</h3>
-                    <div id="round-points-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px;">
-                        </div>                   
-                </div>
+                        <h3 class="question-box" style="margin-bottom: 10px;">Punkte dieser Runde:</h3>
+                        <div id="round-points-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px;"></div>                   
+                    </div>
                 </div>
 
                 
-
+                <!--------------------------------------------------------------------------------------------------->
                 <div id="host-controls" class="hidden" style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">
                     <button id="btn-start-game" class="btn neon-btn-green hidden">Spiel starten</button>
                     
