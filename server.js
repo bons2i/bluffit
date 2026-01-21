@@ -403,7 +403,7 @@ io.on('connection', (socket) => {
 
             setTimeout(() => {
                 io.to(roomId).emit('showAuthors');
-            }, 800);
+            }, 500);
         }
     });
 
@@ -468,3 +468,4 @@ server.listen(PORT, () => {
     console.log(`Server läuft auf Port ${PORT}`);
 
 });
+
