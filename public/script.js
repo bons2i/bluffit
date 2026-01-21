@@ -50,7 +50,7 @@ const btnStartGame = document.getElementById('btn-start-game');
 const btnShowResults = document.getElementById('btn-show-results');
 const btnRevealAnswer = document.getElementById('btn-reveal-answer');
 const btnStartNextRound = document.getElementById('btn-start-next-round');
-const btnRevealAuthors = document.getElementById('btn-reveal-authors');
+//const btnRevealAuthors = document.getElementById('btn-reveal-authors');
 
 // Sonstige Buttons
 const btnCreateRoom = document.getElementById('btn-create-room');
@@ -370,16 +370,16 @@ btnRevealAnswer.addEventListener('click', () => {
     socket.emit('triggerHighlightCorrect', myRoomId);
     btnRevealAnswer.classList.add('hidden');
     // Jetzt darf man Autoren aufdecken
-    btnRevealAuthors.classList.remove('hidden');
+   // btnRevealAuthors.classList.remove('hidden');
 });
 
 // 3. Autoren aufdecken 
-btnRevealAuthors.addEventListener('click', () => {
-    socket.emit('triggerShowAuthors', myRoomId);
-    btnRevealAuthors.classList.add('hidden');
+//btnRevealAuthors.addEventListener('click', () => {
+//    socket.emit('triggerShowAuthors', myRoomId);
+ //   btnRevealAuthors.classList.add('hidden');
     // Jetzt darf man nächste Runde starten
-    btnStartNextRound.classList.remove('hidden');
-});
+ //   btnStartNextRound.classList.remove('hidden');
+//});
 
 
 document.getElementById('btn-rematch').onclick = () => {
@@ -565,7 +565,7 @@ socket.on('resultsRevealed', (data) => {
     // Alte Buttons resetten falls nötig
     if(amIHost) {
         btnRevealAnswer.classList.remove('hidden');
-        btnRevealAuthors.classList.add('hidden'); // Erst später sichtbar
+       // btnRevealAuthors.classList.add('hidden'); // Erst später sichtbar
         btnStartNextRound.classList.add('hidden');
     }
 
