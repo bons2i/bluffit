@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bluff IT by TT</title>
+    <title>Nobody is Perfect Clone</title>
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -27,13 +27,16 @@
 
         <section id="landing-section" class="phase-container">
             <h1 class="game-logo-clean" style="font-size: 4rem; text-align: center; margin-bottom: 50px;">
-        <span class="glow-blue">BLUFF</span> <span class="glow-pink">IT</span>
+                <span class="glow-blue">BLUFF</span> <span class="glow-pink">IT</span>
                 <br>
                 T <span class="flip">T</span>
-    </h1>
+            </h1>
             <div class="menu-buttons">
                 <button id="btn-create-room" class="btn neon-btn-pink">Raum erstellen</button>
                 <button id="btn-show-join" class="btn neon-btn-blue">Raum beitreten</button>
+                <button id="btn-help" class="btn neon-btn-plain" style="margin-top: 20px; font-size: 0.9rem; opacity: 1;">
+                    ❓Wie wird gespielt❓
+                </button>
             </div>
 
             <div id="create-dialog" class="hidden dialog-box">
@@ -50,7 +53,32 @@
                 <button id="btn-join-confirm" class="btn neon-btn-green">Beitreten</button>
                 <button id="btn-join-cancel" class="btn neon-btn-plain">Abbrechen</button>
             </div>
+
+            <div id="rules-modal" class="modal hidden">
+                <div class="modal-content neon-border-blue">
+                    <h2>So wird gespielt</h2>
+                    <div class="rules-grid">
+                        <div class="rule-item">
+                            <span class="icon">✍️</span>
+                            <h3>Bluff es!</h3>
+                            <p>Erfinde eine Antwort, die so echt klingt, dass die anderen sie glauben.</p>
+                        </div>
+                        <div class="rule-item">
+                            <span class="icon">🧐</span>
+                            <h3>Check es!</h3>
+                            <p>Finde die richtige Antwort unter all den Lügen der anderen.</p>
+                        </div>
+                    </div>
+                    <div class="points-info">
+                        <p>🌟 <strong>+3 Pkt</strong> für die richtige Antwort.</p>
+                        <p>😈 <strong>+2 Pkt</strong> für jeden, der auf deine Lüge reinfällt.</p>
+                    </div>
+                    <button id="btn-close-rules" class="btn neon-btn-blue">Verstanden!</button>
+                </div>
+            </div>
         </section>
+
+        
 
 
         <section id="game-room-section" class="hidden game-layout">
@@ -140,5 +168,3 @@
     <script src="script.js"></script>
 </body>
 </html>
-
-
