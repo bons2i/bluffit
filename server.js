@@ -400,16 +400,20 @@ io.on('connection', (socket) => {
         const room = rooms[roomId];
         if (socket.id === room.host) {
             io.to(roomId).emit('highlightCorrectAnswer');
+
+            setTimeout(() => {
+                io.to(roomId).emit('showAuthors');
+            }, 800);
         }
     });
 
     // NEU: Host will die Autoren aufdecken
-    socket.on('triggerShowAuthors', (roomId) => {
-        const room = rooms[roomId];
-        if (socket.id === room.host) {
-            io.to(roomId).emit('showAuthors');
-        }
-    });
+    //socket.on('triggerShowAuthors', (roomId) => {
+    //    const room = rooms[roomId];
+    //    if (socket.id === room.host) {
+    //        io.to(roomId).emit('showAuthors');
+    //    }
+    //});
 
     socket.on('rematch', (roomId) => {
         const room = rooms[roomId];
