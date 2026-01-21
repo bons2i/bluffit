@@ -457,7 +457,7 @@ io.on('connection', (socket) => {
                     leaveRoom(checkPlayer.socketId); // Deine Funktion zum Entfernen aus dem Spiel
                     delete disconnectTimeouts[playerName];
                 }
-            }, 60000); // 60 Sekunden Gnadenfrist
+            }, 300000); // 60 Sekunden Gnadenfrist
         }
     });
 
@@ -468,4 +468,5 @@ server.listen(PORT, () => {
     console.log(`Server läuft auf Port ${PORT}`);
 
 });
+
 
