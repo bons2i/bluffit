@@ -9,6 +9,8 @@ const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 
+const disconnectTimeouts = {};
+
 app.use(express.static('public'));
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
@@ -16,6 +18,8 @@ app.get('/', (req, res) => {
 
 let rooms = {}; // Hier speichern wir alle aktiven Räume
 let questions = JSON.parse(fs.readFileSync('questions.json', 'utf8'));
+let players = new Map(); 
+
 
 // Hilfsfunktion zum Mischen von Arrays (Fisher-Yates Shuffle)
 function shuffle(array) {
@@ -26,10 +30,50 @@ function shuffle(array) {
     return array;
 }
 
+// Hilfsfunktion: Gibt alle Spieler eines Raums zurück
+function getPlayersInRoom(roomId) {
+    return Array.from(players.values()).filter(p => p.roomId === roomId);
+}
+
+// Hilfsfunktion: Spieler sauber entfernen
+function leaveRoom(socketId) {
+    const player = players.get(socketId);
+    if (!player) return;
+
+    const roomId = player.roomId;
+    const room = rooms[roomId];
+
+    if (room) {
+        // Spieler aus dem Raum-Array löschen
+        room.players = room.players.filter(p => p.id !== socketId);
+        // Spieler aus der globalen Map löschen
+        players.delete(socketId);
+
+        // Wenn der Raum jetzt leer ist -> Raum löschen
+        if (room.players.length === 0) {
+            delete rooms[roomId];
+        } else {
+            // Wenn der Host gegangen ist -> Neuen Host ernennen
+            if (room.host === socketId) {
+                room.host = room.players[0].id;
+                io.to(room.host).emit('youAreHost');
+            }
+            // Liste für alle anderen aktualisieren
+            io.to(roomId).emit('updatePlayerList', room.players);
+        }
+    }
+}
+
+
+
 io.on('connection', (socket) => {
     // Raum erstellen
     socket.on('createRoom', ({ playerName, customCode, maxRounds }) => {
-    let roomId;
+    let roomId = customCode ? customCode.trim().toUpperCase() : Math.random().toString(36).substring(2, 5).toUpperCase();
+        if(rooms[roomId] && !customCode) roomId += Math.floor(Math.random()*10);
+
+        const hostPlayer = { socketId: socket.id, id: socket.id, name: playerName, points: 0, roomId: roomId, isOffline: false };
+        players.set(socket.id, hostPlayer); // WICHTIG
 
     // Prüfen: Wurde ein Code eingegeben UND ist dieser noch nicht vergeben?
     if (customCode && customCode.trim().length > 0) {
@@ -61,14 +105,79 @@ io.on('connection', (socket) => {
 
     // Raum beitreten
     socket.on('joinRoom', ({ roomId, playerName }) => {
-        if (rooms[roomId]) {
-            rooms[roomId].players.push({ id: socket.id, name: playerName, points: 0, currentAnswer: '', votedFor: null });
+        const room = rooms[roomId];
+        if (!room) return socket.emit('error', 'Raum nicht gefunden');
+
+        // Prüfen, ob ein Spieler mit diesem Namen KÜRZLICH offline gegangen ist
+        const existingPlayer = Array.from(players.values()).find(p => 
+            p.roomId === roomId && 
+            p.name === playerName && 
+            p.isOffline === true
+        );
+
+        if (existingPlayer) {
+            // --- RECONNECT LOGIK ---
+            const oldSocketId = existingPlayer.socketId; 
+
+            if (disconnectTimeouts[playerName]) {
+                clearTimeout(disconnectTimeouts[playerName]);
+                delete disconnectTimeouts[playerName];
+            }
+
+            players.delete(oldSocketId);
+
+            // 1. WICHTIG: Den Spieler im Raum-Array finden und die ID aktualisieren
+            const playerInRoom = room.players.find(p => p.name === playerName);
+            if (playerInRoom) {
+                playerInRoom.id = socket.id; // Damit "submitAnswer" ihn wieder findet
+                playerInRoom.socketId = socket.id;
+                playerInRoom.isOffline = false;
+            }
+            
+            // 2. Map aktualisieren
+            existingPlayer.socketId = socket.id;
+            existingPlayer.id = socket.id;
+            existingPlayer.isOffline = false;
+            players.set(socket.id, existingPlayer);
+
             socket.join(roomId);
-            io.to(roomId).emit('updatePlayerList', rooms[roomId].players);
-            socket.emit('joinedSuccess', roomId);
+            socket.emit('joinedSuccess', roomId); 
+            
+            // 3. Status an den Rückkehrer senden
+            socket.emit('initRejoin', { 
+                points: existingPlayer.points, 
+                phase: room.phase, // Wichtig für dein script.js
+                currentQuestion: room.currentQuestion ? room.currentQuestion.question : null,
+                currentRound: room.currentRound,
+                maxRounds: room.maxRounds,
+                alreadySubmitted: existingPlayer.currentAnswer !== '',
+                shuffledAnswers: room.shuffledAnswers ? room.shuffledAnswers.map(a => a.text) : [],
+                myLastAnswer: existingPlayer.currentAnswer 
+            });
+
         } else {
-            socket.emit('error', 'Raum nicht gefunden');
+            // --- NORMALER JOIN ---
+            // Sicherstellen, dass alle Felder vorhanden sind
+            const newPlayer = { 
+                socketId: socket.id, 
+                id: socket.id, 
+                name: playerName, 
+                points: 0, 
+                roomId: roomId, 
+                isOffline: false,
+                currentAnswer: '', 
+                votedFor: null,
+                roundPoints: 0 
+            };
+            players.set(socket.id, newPlayer);
+            room.players.push(newPlayer);
+            
+            socket.join(roomId);
+            socket.emit('joinedSuccess', roomId);
         }
+
+        // Liste für alle aktualisieren (nimmt den "offline" Status weg)
+        io.to(roomId).emit('updatePlayerList', room.players);
     });
 
    // Spiel starten / Neue Frage (nur Host)
@@ -115,19 +224,39 @@ io.on('connection', (socket) => {
     socket.on('submitAnswer', ({ roomId, answer }) => {
         const room = rooms[roomId];
         if (!room) return;
-        
+
+        // Wir suchen den Spieler im RAUM-Array anhand seines Namens oder der aktuellen Socket-ID
+        // Das ist sicherer bei Reconnects!
         const player = room.players.find(p => p.id === socket.id);
+        
         if (player) {
             player.currentAnswer = answer;
+            console.log(`✅ Antwort von ${player.name} empfangen.`);
+            
             io.to(roomId).emit('playerSubmitted', socket.id);
 
-            const allFinished = room.players.every(p => p.currentAnswer && p.currentAnswer.length > 0);
+            // WICHTIG: Wir prüfen nur Spieler, die NICHT offline sind ODER wir prüfen alle,
+            // aber wir stellen sicher, dass wir die Leichen im Array ignorieren.
+            const waitingFor = room.players.filter(p => p.currentAnswer === '');
 
-            if (allFinished) {
-                // --- AUTOMATISIERUNG ---
-                // Statt nur dem Host Bescheid zu geben, starten wir direkt das Voting:
-                startVotingLogic(roomId); 
+            if (waitingFor.length === 0) {
+                console.log("🚀 Alle Antworten da! Starte Voting...");
+                room.phase = 'VOTING';
+                
+                let allAns = [{ text: room.currentQuestion.answer, isCorrect: true, creator: 'SERVER' }];
+                room.players.forEach(p => {
+                    if (p.currentAnswer) {
+                        allAns.push({ text: p.currentAnswer, isCorrect: false, creator: p.id });
+                    }
+                });
+                
+                room.shuffledAnswers = shuffle(allAns);
+                io.to(roomId).emit('showVotingOptions', room.shuffledAnswers.map(a => a.text));
+            } else {
+                console.log(`⏳ Warte noch auf: ${waitingFor.map(p => p.name).join(', ')}`);
             }
+        } else {
+            console.log("❌ Fehler: Ein Socket hat versucht zu antworten, der nicht im Raum-Array ist.");
         }
     });
 
@@ -303,26 +432,28 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        for (const roomId in rooms) {
-            const room = rooms[roomId];
-            const playerIndex = room.players.findIndex(p => p.id === socket.id);
+        const player = players.get(socket.id);
+        if (player) {
+            const roomId = player.roomId;
+            const playerName = player.name;
+            
+            console.log(`${playerName} hat die Verbindung verloren. Warte 60s...`);
+            player.isOffline = true;
 
-            if (playerIndex !== -1) {
-                const isHost = (socket.id === room.host);
-                room.players.splice(playerIndex, 1); // Spieler entfernen
+            // Falls es schon einen Timer für diesen Namen gibt (sollte nicht sein, aber sicher ist sicher), löschen
+            if (disconnectTimeouts[playerName]) clearTimeout(disconnectTimeouts[playerName]);
 
-                if (room.players.length === 0) {
-                    delete rooms[roomId]; // Raum löschen, wenn leer
-                } else if (isHost) {
-                    // Neuer Host ist der erste verbleibende Spieler
-                    room.host = room.players[0].id;
-                    // Alle informieren, wer der neue Host ist
-                    io.to(roomId).emit('updatePlayerList', room.players);
-                    io.to(room.host).emit('youAreHost'); 
-                } else {
-                    io.to(roomId).emit('updatePlayerList', room.players);
+            // Timer starten
+            disconnectTimeouts[playerName] = setTimeout(() => {
+                // Prüfen, ob der Spieler immer noch offline ist
+                const checkPlayer = Array.from(players.values()).find(p => p.name === playerName && p.roomId === roomId);
+                
+                if (checkPlayer && checkPlayer.isOffline) {
+                    console.log(`${playerName} ist nach 60s nicht zurückgekehrt. Lösche Spieler.`);
+                    leaveRoom(checkPlayer.socketId); // Deine Funktion zum Entfernen aus dem Spiel
+                    delete disconnectTimeouts[playerName];
                 }
-            }
+            }, 60000); // 60 Sekunden Gnadenfrist
         }
     });
 
