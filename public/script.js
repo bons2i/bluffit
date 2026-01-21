@@ -1,5 +1,3 @@
-const socket = io();
-
 // Status Variablen
 let myRoomId = null;
 let amIHost = false;
@@ -63,6 +61,18 @@ const btnSubmitAnswer = document.getElementById('btn-submit-answer');
 
 const revealStep1 = document.getElementById('reveal-step-1');
 const revealStep2 = document.getElementById('reveal-step-2');
+
+// Button zum Öffnen (muss in HTML existieren)
+document.getElementById('btn-help').onclick = () => document.getElementById('rules-modal').classList.remove('hidden');
+document.getElementById('btn-close-rules').onclick = () => document.getElementById('rules-modal').classList.add('hidden');
+
+const socket = io({
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
+    timeout: 20000 // Länger warten, bevor er aufgibt
+});
+
 
 // --- HILFSFUNKTIONEN ---
 
@@ -132,6 +142,160 @@ function updatePlayerListUI(players) {
 }
 
 
+// Speichert die Session-Daten im Browser des Spielers
+function saveSession(name, room) {
+    localStorage.setItem('bluffIt_name', name);
+    localStorage.setItem('bluffIt_room', room);
+}
+
+// Prüft beim Laden der Seite, ob noch eine Session aktiv ist
+function checkSession() {
+    const name = localStorage.getItem('bluffIt_name');
+    const room = localStorage.getItem('bluffIt_room');
+    if (name && room) {
+        // Hier könnten wir später einen "Wieder beitreten" Button anzeigen
+        console.log("Alte Session gefunden:", name, room);
+    }
+}
+
+// Wenn der User den Join-Button drückt:
+function joinRoom() {
+    const name = document.getElementById('join-name-input').value;
+    const room = document.getElementById('join-code-input').value;
+    
+    if (name && room) {
+        // Namen lokal speichern für Reconnects
+        localStorage.setItem('bluffIt_name', name);
+        localStorage.setItem('bluffIt_room', room);
+        
+        socket.emit('joinRoom', { roomId: room, playerName: name });
+    }
+}
+
+// Wenn die Verbindung abbricht und wiederkommt:
+socket.on('connect', () => {
+    const savedName = localStorage.getItem('bluffIt_name');
+    const savedRoom = localStorage.getItem('bluffIt_room');
+
+    // Falls wir mitten im Spiel waren, versuchen wir automatisch zu rejoinen
+    if (savedName && savedRoom && currentPhase !== "LANDING") {
+        socket.emit('joinRoom', { roomId: savedRoom, playerName: savedName });
+    }
+});
+
+socket.on('initRejoin', (data) => {
+    currentPhase = data.phase;
+    currentRound = data.currentRound;
+    maxRounds = data.maxRounds;
+    myLastAnswer = data.myLastAnswer;
+
+    if (data.phase === 'WRITING') {
+        showSection('game-room-section');
+        showGamePhase('phase-writing');
+        questionText.innerText = data.currentQuestion;
+        
+        // Wenn er vor dem Crash schon geantwortet hatte:
+        if (data.alreadySubmitted) {
+            myAnswerInput.classList.add('hidden');
+            btnSubmitAnswer.classList.add('hidden');
+            waitingMessage.classList.remove('hidden');
+        } else {
+            myAnswerInput.classList.remove('hidden');
+            btnSubmitAnswer.classList.remove('hidden');
+            waitingMessage.classList.add('hidden');
+        }
+    } 
+    else if (data.phase === 'VOTING') {
+        // Ähnliche Logik hier, um die Voting-Ansicht wiederherzustellen
+        showSection('game-room-section');
+        showGamePhase('phase-voting');
+        if (data.shuffledAnswers && data.shuffledAnswers.length > 0) {
+            renderVotingOptions(data.shuffledAnswers);
+        }
+    }
+    
+    // Rundenzähler updaten
+    const roundText = maxRounds > 0 ? `Runde: ${currentRound} / ${maxRounds}` : `Runde: ${currentRound}`;
+    roundCounter.innerText = roundText;
+});
+
+function renderVotingOptions(answers) {
+    const votingOptionsContainer = document.getElementById('voting-options');
+    votingOptionsContainer.innerHTML = ''; 
+    
+   // 1. ZUERST den Bestätigungs-Button erstellen (damit er oben im Loop bekannt ist)
+    const confirmBtn = document.createElement('button');
+    confirmBtn.innerText = "🔒 Auswahl bestätigen";
+    confirmBtn.className = "btn neon-btn-pink";
+    confirmBtn.disabled = true; 
+    confirmBtn.style.opacity = "0.5"; 
+    confirmBtn.style.cursor = "not-allowed";
+    confirmBtn.style.marginTop = "20px";
+    confirmBtn.style.width = "100%";
+
+    // 2. Antwort-Buttons erstellen
+    answers.forEach(answer => {
+        if (answer === myLastAnswer) return;
+
+        const btn = document.createElement('button');
+        btn.className = 'btn neon-btn-blue answer-option-btn';
+        btn.innerText = answer;
+        btn.style.width = "100%";
+        btn.style.marginBottom = "10px";
+        
+        btn.onclick = () => {
+            // Alle Buttons zurücksetzen
+            document.querySelectorAll('.answer-option-btn').forEach(b => {
+                b.classList.remove('neon-btn-green', 'selected'); // 'selected' auch entfernen
+                b.classList.add('neon-btn-blue');
+            });
+
+            // Aktuellen Button hervorheben
+            btn.classList.remove('neon-btn-blue');
+            btn.classList.add('neon-btn-green', 'selected'); 
+            
+            selectedAnswer = answer;
+
+            // Bestätigen-Button aktivieren
+            confirmBtn.disabled = false;
+            confirmBtn.style.opacity = "1";
+            confirmBtn.style.cursor = "pointer";
+        };
+        votingOptionsContainer.appendChild(btn);
+    });
+
+    // 3. Bestätigungs-Logik
+    confirmBtn.onclick = () => {
+        if (selectedAnswer) {
+            socket.emit('submitVote', { roomId: myRoomId, answerText: selectedAnswer });
+            
+            const myLi = document.querySelector(`li[data-id="${socket.id}"] .tick-mark`);
+            if(myLi) myLi.innerText = '✔';
+    
+            votingOptionsContainer.innerHTML = '';
+
+            const lockedBtn = document.createElement('button');
+            lockedBtn.className = 'btn neon-btn-green';
+            lockedBtn.innerText = selectedAnswer;
+            lockedBtn.style.width = "100%";
+            lockedBtn.disabled = true;
+            
+            const statusMsg = document.createElement('div');
+            statusMsg.style.textAlign = "center";
+            statusMsg.style.marginTop = "25px";
+            statusMsg.innerHTML = `
+                <p style="font-size: 1.2rem; margin-bottom: 5px;">✔ Auswahl eingeloggt</p>
+                <p style="font-size: 0.9rem; opacity: 0.8;">Warte auf restliche Stimmen...</p>
+            `;
+
+            votingOptionsContainer.appendChild(lockedBtn);
+            votingOptionsContainer.appendChild(statusMsg);
+        }
+    };
+    
+    // Den Button am Ende anhängen
+    votingOptionsContainer.appendChild(confirmBtn);
+}
 
 // --- EVENT LISTENERS ---
 
