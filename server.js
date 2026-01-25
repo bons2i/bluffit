@@ -69,72 +69,65 @@ function leaveRoom(socketId) {
 io.on('connection', (socket) => {
     // Raum erstellen
     socket.on('createRoom', ({ playerName, customCode, maxRounds }) => {
-    let roomId = customCode ? customCode.trim().toUpperCase() : Math.random().toString(36).substring(2, 5).toUpperCase();
-        if(rooms[roomId] && !customCode) roomId += Math.floor(Math.random()*10);
+        let roomId = customCode ? customCode.trim().toUpperCase() : Math.random().toString(36).substring(2, 5).toUpperCase();
+        if (rooms[roomId] && !customCode) roomId += Math.floor(Math.random() * 10);
 
-        const hostPlayer = { socketId: socket.id, id: socket.id, name: playerName, points: 0, roomId: roomId, isOffline: false };
-        players.set(socket.id, hostPlayer); // WICHTIG
+        // 1. Das Spieler-Objekt EINMAL definieren
+        const hostPlayer = { 
+            socketId: socket.id, 
+            id: socket.id, 
+            name: playerName, 
+            points: 0, 
+            roomId: roomId, 
+            isOffline: false,
+            currentAnswer: '',
+            votedFor: null,
+            roundPoints: 0
+        };
 
-    // Prüfen: Wurde ein Code eingegeben UND ist dieser noch nicht vergeben?
-    if (customCode && customCode.trim().length > 0) {
-        if (!rooms[customCode]) {
-            roomId = customCode.trim().toUpperCase();
-        } else {
-            // Falls der Code schon existiert, hängen wir eine Zufallszahl an
-            roomId = customCode.trim().toUpperCase() + Math.floor(Math.random() * 10);
-        }
-    } else {
-        // Kein Wunsch-Code -> komplett zufällig
-        roomId = Math.random().toString(36).substring(2, 5).toUpperCase();
-    }
-    
-    rooms[roomId] = {
-        host: socket.id,
-        players: [{ id: socket.id, name: playerName, points: 0, currentAnswer: '', votedFor: null, roundPoints: 0 }],
-        phase: 'LOBBY',
-        currentRound: 0,
-        maxRounds: parseInt(maxRounds) || 0,
-        currentQuestion: null,
-        shuffledAnswers: []
-    };
+        // 2. In die globale Map UND in den neuen Raum setzen
+        players.set(socket.id, hostPlayer); 
+        
+        rooms[roomId] = {
+            host: socket.id,
+            players: [hostPlayer], // Hier wird jetzt die Referenz auf hostPlayer genutzt
+            phase: 'LOBBY',
+            currentRound: 0,
+            maxRounds: parseInt(maxRounds) || 0,
+            currentQuestion: null,
+            shuffledAnswers: []
+        };
 
-    socket.join(roomId);
-    // WICHTIG: Hier schicken wir die finale roomId zurück an den Host
-    socket.emit('roomCreated', { roomId, players: rooms[roomId].players, maxRounds: rooms[roomId].maxRounds });
-});
+        socket.join(roomId);
+        socket.emit('roomCreated', { roomId, players: rooms[roomId].players, maxRounds: rooms[roomId].maxRounds });
+    });
 
     // Raum beitreten
     socket.on('joinRoom', ({ roomId, playerName }) => {
         const room = rooms[roomId];
         if (!room) return socket.emit('error', 'Raum nicht gefunden');
 
-        // Prüfen, ob ein Spieler mit diesem Namen KÜRZLICH offline gegangen ist
         const existingPlayer = Array.from(players.values()).find(p => 
-            p.roomId === roomId && 
-            p.name === playerName && 
-            p.isOffline === true
+            p.roomId === roomId && p.name === playerName && p.isOffline === true
         );
 
         if (existingPlayer) {
-            // --- RECONNECT LOGIK ---
             const oldSocketId = existingPlayer.socketId; 
-
             if (disconnectTimeouts[playerName]) {
                 clearTimeout(disconnectTimeouts[playerName]);
                 delete disconnectTimeouts[playerName];
             }
 
-            players.delete(oldSocketId);
-
-            // 1. WICHTIG: Den Spieler im Raum-Array finden und die ID aktualisieren
-            const playerInRoom = room.players.find(p => p.name === playerName);
-            if (playerInRoom) {
-                playerInRoom.id = socket.id; // Damit "submitAnswer" ihn wieder findet
-                playerInRoom.socketId = socket.id;
-                playerInRoom.isOffline = false;
+            // --- DUBLETTEN-STOPPER ---
+            // Wir aktualisieren die ID direkt im Array
+            const playerInArray = room.players.find(p => p.name === playerName);
+            if (playerInArray) {
+                playerInArray.id = socket.id;
+                playerInArray.socketId = socket.id;
+                playerInArray.isOffline = false;
             }
-            
-            // 2. Map aktualisieren
+
+            players.delete(oldSocketId);
             existingPlayer.socketId = socket.id;
             existingPlayer.id = socket.id;
             existingPlayer.isOffline = false;
@@ -143,10 +136,9 @@ io.on('connection', (socket) => {
             socket.join(roomId);
             socket.emit('joinedSuccess', roomId); 
             
-            // 3. Status an den Rückkehrer senden
             socket.emit('initRejoin', { 
                 points: existingPlayer.points, 
-                phase: room.phase, // Wichtig für dein script.js
+                phase: room.phase,
                 currentQuestion: room.currentQuestion ? room.currentQuestion.question : null,
                 currentRound: room.currentRound,
                 maxRounds: room.maxRounds,
@@ -154,29 +146,22 @@ io.on('connection', (socket) => {
                 shuffledAnswers: room.shuffledAnswers ? room.shuffledAnswers.map(a => a.text) : [],
                 myLastAnswer: existingPlayer.currentAnswer 
             });
-
         } else {
-            // --- NORMALER JOIN ---
-            // Sicherstellen, dass alle Felder vorhanden sind
+            // Normaler Join: Verhindern, dass jemand mit gleichem Namen joint, wenn Spieler online ist
+            if (room.players.find(p => p.name === playerName)) {
+                return socket.emit('error', 'Name bereits im Spiel!');
+            }
+
             const newPlayer = { 
-                socketId: socket.id, 
-                id: socket.id, 
-                name: playerName, 
-                points: 0, 
-                roomId: roomId, 
-                isOffline: false,
-                currentAnswer: '', 
-                votedFor: null,
-                roundPoints: 0 
+                socketId: socket.id, id: socket.id, name: playerName, 
+                points: 0, roomId: roomId, isOffline: false,
+                currentAnswer: '', votedFor: null, roundPoints: 0 
             };
             players.set(socket.id, newPlayer);
             room.players.push(newPlayer);
-            
             socket.join(roomId);
             socket.emit('joinedSuccess', roomId);
         }
-
-        // Liste für alle aktualisieren (nimmt den "offline" Status weg)
         io.to(roomId).emit('updatePlayerList', room.players);
     });
 
@@ -457,7 +442,7 @@ io.on('connection', (socket) => {
                     leaveRoom(checkPlayer.socketId); // Deine Funktion zum Entfernen aus dem Spiel
                     delete disconnectTimeouts[playerName];
                 }
-            }, 300000); // 60 Sekunden Gnadenfrist
+            }, 300000); // 5minuten (300 Sekunden) Gnadenfrist
         }
     });
 
@@ -468,5 +453,3 @@ server.listen(PORT, () => {
     console.log(`Server läuft auf Port ${PORT}`);
 
 });
-
-
