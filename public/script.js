@@ -141,6 +141,11 @@ function updatePlayerListUI(players) {
     }
 }
 
+// Optional: Funktion zum "Ausloggen"
+function clearSession() {
+    localStorage.removeItem('bluffIt_name');
+    localStorage.removeItem('bluffIt_room');
+}
 
 // Speichert die Session-Daten im Browser des Spielers
 function saveSession(name, room) {
@@ -404,6 +409,8 @@ socket.on('roomCreated', ({ roomId, players, maxRounds: serverMaxRounds }) => {
     updatePlayerListUI(players);
     showSection('game-room-section');
     showGamePhase('phase-lobby');
+    localStorage.setItem('bluffIt_name', createNameInput.value.trim());
+    localStorage.setItem('bluffIt_room', roomId);
 });
 
 socket.on('joinedSuccess', (roomId) => {
@@ -413,6 +420,11 @@ socket.on('joinedSuccess', (roomId) => {
     hostControls.classList.add('hidden');
     showSection('game-room-section');
     showGamePhase('phase-lobby');
+    const name = document.getElementById('join-name-input').value;
+    if (name) { // Nur speichern, wenn manuell eingegeben
+        localStorage.setItem('bluffIt_name', name);
+        localStorage.setItem('bluffIt_room', roomId);
+    }
 });
 
 socket.on('updatePlayerList', (players) => updatePlayerListUI(players));
@@ -813,8 +825,25 @@ socket.on('youAreHost', () => {
     alert("Der Host hat das Spiel verlassen. Du bist jetzt der neue Host!");
 });
 
+window.addEventListener('load', () => {
+    const savedName = localStorage.getItem('bluffIt_name');
+    const savedRoom = localStorage.getItem('bluffIt_room');
 
-socket.on('error', (msg) => alert(msg));
+    if (savedName && savedRoom) {
+        console.log("Versuche automatischen Reconnect für:", savedName, "in Raum:", savedRoom);
+        // Wir senden das joinRoom Event automatisch
+        socket.emit('joinRoom', { roomId: savedRoom, playerName: savedName });
+    }
+});
+
+socket.on('error', (msg) => {
+    alert(msg);
+    if (msg === 'Raum nicht gefunden') {
+        clearSession();
+        // Zurück zur Startseite (Landing Section)
+        showSection('landing-section');
+    }
+});
 
 
 
