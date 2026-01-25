@@ -148,7 +148,7 @@ io.on('connection', (socket) => {
             });
         } else {
             // Normaler Join: Verhindern, dass jemand mit gleichem Namen joint, wenn Spieler online ist
-            if (room.players.find(p => p.name === playerName) && existingPlayer.isOffline = false) {
+            if (room.players.find(p => p.name === playerName)) {
                 return socket.emit('error', 'Name bereits im Spiel!');
             }
 
@@ -453,4 +453,5 @@ server.listen(PORT, () => {
     console.log(`Server läuft auf Port ${PORT}`);
 
 });
+
 
