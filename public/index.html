@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BluffIt</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#00d2ff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="BluffIt">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- QR-Code Bibliothek -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+<div class="main-container">
+
+    <!-- ══════════════════════════════════════════════════════ HEADER -->
+    <header id="game-header" class="hidden">
+        <div class="header-content">
+            <h1 class="game-logo-clean small">
+                <span class="glow-blue">BLUFF</span><span class="glow-pink">IT</span>
+            </h1>
+            <div class="room-info-simple">
+                <span class="label-minimal">RAUM:</span>
+                <span id="room-code-display" class="code-minimal">---</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ══════════════════════════════════════════════════════ LANDING -->
+    <section id="landing-section" class="phase-container">
+        <h1 class="game-logo-clean" style="font-size:3.5rem;text-align:center;margin-bottom:40px;">
+            <span class="glow-blue">BLUFF</span> <span class="glow-pink">IT</span>
+        </h1>
+        <div class="menu-buttons">
+            <button id="btn-create-room" class="btn neon-btn-pink">Raum erstellen</button>
+            <button id="btn-show-join"   class="btn neon-btn-blue">Raum beitreten</button>
+            <button id="btn-help" class="btn neon-btn-plain" style="margin-top:20px;font-size:0.9rem;">❓ Wie wird gespielt?</button>
+        </div>
+
+        <!-- Create Dialog -->
+        <div id="create-dialog" class="hidden dialog-box">
+            <div class="form-field">
+                <label class="field-label">Dein Name</label>
+                <input type="text" id="create-name-input" placeholder="z.B. Alex" class="neon-input">
+            </div>
+            <div class="form-field">
+                <label class="field-label">Raum-Code <span class="field-hint">(leer = zufällig)</span></label>
+                <input type="text" id="create-code-input" placeholder="z.B. PIZZA" class="neon-input">
+            </div>
+            <div class="form-field">
+                <label class="field-label">Rundenzahl <span class="field-hint">(0 = endlos)</span></label>
+                <input type="number" id="create-rounds-input" placeholder="z.B. 5" class="neon-input" min="0">
+            </div>
+            <div class="row-2">
+                <div class="form-field">
+                    <label class="field-label">⏱ Schreib-Zeit</label>
+                    <div class="input-with-unit">
+                        <input type="number" id="create-write-timer" class="neon-input" min="10" max="300" value="90">
+                        <span class="unit-label">Sek.</span>
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label class="field-label">🗳 Abstimm-Zeit</label>
+                    <div class="input-with-unit">
+                        <input type="number" id="create-vote-timer" class="neon-input" min="10" max="300" value="60">
+                        <span class="unit-label">Sek.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sound Toggle -->
+            <div class="sound-toggle-row">
+                <label class="toggle-label">
+                    <input type="checkbox" id="create-sound-toggle" checked>
+                    <span class="toggle-slider"></span>
+                    🔊 Soundeffekte
+                </label>
+            </div>
+
+            <!-- Modus-Wahl -->
+            <div class="mode-selector">
+                <button class="mode-btn active" data-mode="digital">
+                    📱 Digital-Modus
+                    <small>Alle tippen ihre Antwort ein</small>
+                </button>
+                <button class="mode-btn" data-mode="presence">
+                    🗣️ Präsenz-Modus
+                    <small>Einer kennt die Antwort – alle diskutieren</small>
+                </button>
+            </div>
+
+            <!-- Kategorie-Filter -->
+            <div id="category-filter" class="category-filter">
+                <p class="filter-label">Kategorien (leer = alle):</p>
+                <div id="category-buttons" class="category-btn-grid"></div>
+            </div>
+
+            <button id="btn-create-confirm" class="btn neon-btn-pink">Jetzt erstellen</button>
+            <button id="btn-create-cancel"  class="btn neon-btn-plain">Abbrechen</button>
+        </div>
+
+        <!-- Join Dialog -->
+        <div id="join-dialog" class="hidden dialog-box">
+            <input type="text" id="join-name-input" placeholder="Dein Name"      class="neon-input">
+            <input type="text" id="join-code-input" placeholder="Raum-Code"      class="neon-input">
+            <button id="btn-join-confirm" class="btn neon-btn-green">Beitreten</button>
+            <button id="btn-join-cancel"  class="btn neon-btn-plain">Abbrechen</button>
+        </div>
+
+        <!-- Regeln Modal -->
+        <div id="rules-modal" class="modal hidden">
+            <div class="modal-content neon-border-blue">
+                <h2>So wird gespielt</h2>
+                <div class="rules-grid">
+                    <div class="rule-item">
+                        <span class="icon">✍️</span>
+                        <h3>Bluff es!</h3>
+                        <p>Erfinde eine Antwort, die so echt klingt, dass die anderen sie glauben.</p>
+                    </div>
+                    <div class="rule-item">
+                        <span class="icon">🧐</span>
+                        <h3>Check es!</h3>
+                        <p>Finde die richtige Antwort unter all den Lügen.</p>
+                    </div>
+                </div>
+                <div class="points-info">
+                    <p>🌟 <strong>+3 Pkt</strong> für die richtige Antwort</p>
+                    <p>😈 <strong>+2 Pkt</strong> für jeden, der auf deine Lüge reinfällt</p>
+                </div>
+                <h3 style="margin-top:16px;">Präsenz-Modus</h3>
+                <p style="font-size:0.9rem;opacity:0.8;margin-top:6px;">
+                    Ein zufälliger Spieler bekommt die richtige Antwort aufs Handy. 
+                    Alle anderen erfinden ihre Antwort im Kopf. Dann erklärt jeder 
+                    seine Antwort laut – und alle stimmen ab!
+                </p>
+                <button id="btn-close-rules" class="btn neon-btn-blue" style="margin-top:20px;">Verstanden!</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════ GAME ROOM -->
+    <section id="game-room-section" class="hidden game-layout">
+
+        <!-- Sidebar -->
+        <aside class="player-sidebar neon-border-blue">
+            <div class="sidebar-header">
+                <h3>Spieler</h3>
+                <span id="round-counter" class="round-counter"></span>
+            </div>
+            <ul id="player-list"></ul>
+
+            <!-- Sidebar Tools -->
+            <div class="sidebar-tools">
+                <button id="btn-toggle-sound" class="sidebar-tool-btn" title="Sound an/aus">🔊</button>
+                <button id="btn-sidebar-qr"   class="sidebar-tool-btn hidden" title="QR-Code anzeigen">📷</button>
+                <button id="btn-leave-room"    class="sidebar-tool-btn leave" title="Raum verlassen">🚪</button>
+            </div>
+
+            <!-- QR Code -->
+            <div id="qr-container" class="qr-container hidden">
+                <p class="qr-label">Scan zum Beitreten:</p>
+                <div id="qr-code"></div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="game-content neon-border-pink">
+
+            <!-- Timer Bar -->
+            <div id="timer-bar-wrap" class="timer-bar-wrap hidden">
+                <div id="timer-bar" class="timer-bar"></div>
+                <span id="timer-text" class="timer-text">90</span>
+            </div>
+
+            <!-- LOBBY -->
+            <div id="phase-lobby" class="phase-container">
+                <div id="mode-badge" class="mode-badge"></div>
+                <h2>Warte auf Spieler…</h2>
+                <p style="color:#aaa;margin-bottom:20px;">Sobald alle da sind, kann der Host starten.</p>
+
+                <div id="lobby-qr-hint" style="text-align:center;margin-bottom:16px;" class="hidden">
+                    <button id="btn-toggle-qr" class="btn neon-btn-plain" style="font-size:0.8rem;">📷 QR-Code anzeigen</button>
+                </div>
+            </div>
+
+            <!-- WRITING -->
+            <div id="phase-writing" class="phase-container hidden">
+                <div id="category-badge" class="category-badge"></div>
+                <h2 class="question-box" id="question-text">Frage wird geladen…</h2>
+
+                <!-- Präsenz-Info (für den "Wissenden") -->
+                <div id="presence-answer-reveal" class="presence-box hidden">
+                    <p class="presence-label">🤫 Du kennst die richtige Antwort:</p>
+                    <p id="presence-answer-text" class="presence-answer"></p>
+                    <p style="font-size:0.8rem;opacity:0.7;margin-top:8px;">Erkläre deine Antwort überzeugend – du musst die anderen täuschen!</p>
+                </div>
+
+                <!-- Präsenz-Info (für alle anderen) -->
+                <div id="presence-watcher-info" class="presence-box hidden">
+                    <p id="presence-chosen-name" class="presence-label"></p>
+                    <p style="font-size:0.85rem;opacity:0.7;">Alle erklären jetzt ihre Antwort laut. Dann stimmt der Host die Abstimmung ab.</p>
+                </div>
+
+                <!-- Digital: Antwort eingeben -->
+                <div id="digital-answer-area" class="answer-input-area">
+                    <textarea id="my-answer-input" placeholder="Erfinde deine glaubwürdige Antwort…" class="neon-input"></textarea>
+                    <button id="btn-submit-answer" class="btn neon-btn-pink">Antwort abschicken</button>
+                    <p id="waiting-message" class="hidden neon-text-green" style="text-align:center;margin-top:10px;">✔ Abgeschickt! Warte auf die anderen…</p>
+                </div>
+            </div>
+
+            <!-- VOTING -->
+            <div id="phase-voting" class="phase-container hidden">
+                <h2 class="question-box">Welche Antwort ist richtig?</h2>
+                <p id="voting-question-display" class="question-display-sub"></p>
+                <div id="voting-options" class="options-grid"></div>
+                <p id="vote-waiting-msg" class="hidden neon-text-green" style="text-align:center;margin-top:10px;">✔ Stimme abgegeben! Warte auf die anderen…</p>
+            </div>
+
+            <!-- REVEAL -->
+            <div id="phase-reveal" class="phase-container hidden">
+                <h2 class="question-box">Auflösung</h2>
+                <p id="reveal-question-display" class="question-display-sub"></p>
+                <div id="voting-distribution" class="options-grid"></div>
+                <div id="round-summary" class="hidden round-summary">
+                    <h3 class="question-box" style="margin-bottom:10px;">Punkte dieser Runde:</h3>
+                    <div id="round-points-grid"></div>
+                </div>
+            </div>
+
+            <!-- END -->
+            <div id="phase-end-results" class="phase-container hidden">
+                <h1 class="neon-pink" style="font-size:3rem;text-align:center;">🏆 SIEGEREHRUNG</h1>
+                <div id="podium-list"></div>
+                <div id="awards-section" class="awards-section"></div>
+
+                <div style="text-align:center;margin-top:30px;">
+                    <button id="btn-rematch" class="btn neon-btn-blue hidden">🔄 Nochmal spielen</button>
+                    <button onclick="location.reload()" class="btn neon-btn-plain" style="font-size:0.8rem;margin-top:10px;">Raum verlassen</button>
+                </div>
+            </div>
+
+            <!-- HOST CONTROLS (nur einmal!) -->
+            <div id="host-controls" class="hidden host-controls-bar">
+                <button id="btn-start-game"      class="btn neon-btn-green  hidden">▶ Spiel starten</button>
+                <button id="btn-start-voting"     class="btn neon-btn-blue   hidden">🗳️ Abstimmung starten</button>
+                <button id="btn-reveal-authors"   class="btn neon-btn-blue   hidden">👤 Autoren aufdecken</button>
+                <button id="btn-reveal-answer"    class="btn neon-btn-green  hidden">✅ Richtige Antwort aufdecken</button>
+                <button id="btn-start-next-round" class="btn neon-btn-pink   hidden">Nächste Runde →</button>
+                <button id="btn-veto"             class="btn neon-btn-warn  hidden">⚠️ Unsinn bestrafen</button>
+            </div>
+
+            <!-- VETO OVERLAY -->
+            <div id="veto-overlay" class="veto-overlay hidden">
+                <div class="veto-box">
+                    <h3>⚠️ Wer hat Unsinn gemacht?</h3>
+                    <p class="veto-hint">Der Spieler bekommt doppelte Rundengewinne als Strafe abgezogen.</p>
+                    <div id="veto-player-list" class="veto-player-list"></div>
+                    <button id="btn-veto-cancel" class="btn neon-btn-plain" style="margin-top:12px;">Abbrechen</button>
+                </div>
+            </div>
+
+            <!-- REAKTIONEN (immer unten, sichtbar in Reveal + End) -->
+            <div id="reaction-panel" class="reaction-panel hidden">
+                <div id="reaction-emojis" class="reaction-emojis">
+                    <button class="reaction-btn" data-emoji="😂">😂</button>
+                    <button class="reaction-btn" data-emoji="🤯">🤯</button>
+                    <button class="reaction-btn" data-emoji="👏">👏</button>
+                    <button class="reaction-btn" data-emoji="😤">😤</button>
+                    <button class="reaction-btn" data-emoji="🔥">🔥</button>
+                    <button class="reaction-btn" data-emoji="💀">💀</button>
+                </div>
+            </div>
+
+            <!-- REAKTIONS-OVERLAY (floating emojis) -->
+            <div id="reaction-overlay" class="reaction-overlay"></div>
+
+        </main>
+    </section>
+
+</div>
+<script src="script.js"></script>
+</body>
+</html>
